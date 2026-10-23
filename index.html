@@ -120,6 +120,7 @@ th{color:var(--muted);font-weight:600;font-size:13px}
 .tasklist a:last-child{border-bottom:none}
 .flipq{font-size:18px;font-weight:600}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.lesson-read p{margin:8px 0}.lesson-read pre{margin:8px 0}.lesson-read ul{margin:6px 0}
 </style>
 </head>
 <body>
@@ -743,6 +744,404 @@ const LESSONS = {
 // Merge competency behavior lessons (behavior.lesson) under their generated item ids.
 COMPETENCIES.forEach(c=>c.behaviors.forEach(b=>{if(b.lesson)LESSONS[c.id+b.id]=b.lesson;}));
 
+// ============================== LANGUAGES ==============================
+// Language study: short courses (read, then do) and typed-answer drill decks.
+// Lesson kinds: predict (type the program's output), write (code graded by patterns), mcq,
+// run (TypeScript: edit, run, output must match), tests (TypeScript: unit tests run in a Worker).
+// Drill cards: {id, obj, q, accept:[regex...] (any match passes), a (model answer), why}.
+const NG_HARNESS=`let __cur=null;
+function signal(v){const subs=new Set();const s=()=>{if(__cur)__cur.add(s);return v;};s.set=n=>{if(Object.is(n,v))return;v=n;[...subs].forEach(f=>f());};s.update=f=>s.set(f(v));s.asReadonly=()=>s;s.__subs=subs;return s;}
+function computed(fn){let cache,dirty=true;const subs=new Set();const mark=()=>{if(!dirty){dirty=true;[...subs].forEach(f=>f());}};const c=()=>{if(__cur)__cur.add(c);if(dirty){const prev=__cur;__cur=new Set();try{cache=fn();}finally{const deps=__cur;__cur=prev;deps.forEach(d=>d.__subs.add(mark));}dirty=false;}return cache;};c.__subs=subs;return c;}
+function effect(fn){const run=()=>{const prev=__cur;__cur=new Set();try{fn();}finally{const deps=__cur;__cur=prev;deps.forEach(d=>d.__subs.add(run));}};run();return {destroy(){}};}
+`;
+const LANGS = [
+ {id:"cs",name:"C#",ksa:["K2","P2"],run:false,
+  blurb:"The back-end language in the posting. C# can't run in the browser, so these lessons ask you to predict output, write code that is checked for the right constructs, and answer quick questions. Keep a real project open in Visual Studio or VS Code and try each snippet there too.",
+  chapters:[
+   {id:"types",t:"Types, records and strings",lessons:[
+    {id:"cs-1-1",t:"Values, var and interpolation",kind:"predict",
+     read:"C# is statically typed: every variable has a type the compiler knows. `var` asks the compiler to infer it from the right-hand side; the variable is still typed.\n\nInteger division truncates: `3 / 2` is `1`, but `3 / 2.0` is `1.5` because one operand is a double. String interpolation `$\"...{expr}...\"` formats values inline.\n\nRead the program, then type exactly what it prints, one line per `Console.WriteLine`.",
+     code:"int count = 3;\nvar name = \"Permit\";\ndouble fee = 12.5;\nConsole.WriteLine($\"{name} x{count} = {count * fee}\");\nConsole.WriteLine(count / 2);\nConsole.WriteLine(count / 2.0);",
+     expect:"Permit x3 = 37.5\n1\n1.5",
+     explain:"`count * fee` is int times double, so the result is a double (37.5). `count / 2` is integer division (1). `count / 2.0` promotes to double (1.5)."},
+    {id:"cs-1-2",t:"Records versus classes",kind:"predict",
+     read:"A `record` is a type with value semantics: two records with the same property values are equal, `ToString()` prints the properties, and `with` makes a modified copy. A `class` compares by reference unless you override `Equals`.\n\nPositional records declare properties in the header: `record Permit(int Id, string Status)` gives you `Id` and `Status`, a constructor and deconstruction.\n\nWhat does this print?",
+     code:"public record Permit(int Id, string Status);\npublic class Owner { public string Name = \"\"; }\n\nvar a = new Permit(1, \"Open\");\nvar b = new Permit(1, \"Open\");\nvar c = new Owner { Name = \"Ann\" };\nvar d = new Owner { Name = \"Ann\" };\nConsole.WriteLine(a == b);\nConsole.WriteLine(c == d);\nvar e = a with { Status = \"Approved\" };\nConsole.WriteLine(e);\nConsole.WriteLine(a.Status);",
+     expect:"True\nFalse\nPermit { Id = 1, Status = Approved }\nOpen",
+     explain:"Records compare by value (True); classes compare by reference (False). `with` copies `a` with a new Status and prints the record format `Permit { Id = 1, Status = Approved }`. The original `a` is unchanged (Open)."},
+    {id:"cs-1-3",t:"Write a record and a get-only property",kind:"write",
+     read:"Positional records are the shortest way to declare an immutable data type. For a class, a get-only auto property (`public string Number { get; }`) can only be set in the constructor or an initializer, which makes invariants easy to keep.\n\n`DateOnly` (since .NET 6) holds a calendar date without a time.",
+     task:"Declare a positional record `Inspection` with `int Id`, `DateOnly Date` and `string Result`. Then declare a class `Permit` with a get-only string property `Number` that is set from a constructor parameter `number`.",
+     starter:"// record Inspection ...\n\n// class Permit ...\n",
+     accept:[/record\s+Inspection\s*\(\s*int\s+Id\s*,\s*DateOnly\s+Date\s*,\s*string\s+Result\s*\)/,/class\s+Permit\b/,/public\s+string\s+Number\s*\{\s*get;\s*\}/,/Permit\s*\(\s*string\s+number\s*\)/,/Number\s*=\s*number\s*;/],
+     labels:["record Inspection(int Id, DateOnly Date, string Result)","class Permit","public string Number { get; }","constructor Permit(string number)","assigns Number = number"],
+     solution:"public record Inspection(int Id, DateOnly Date, string Result);\n\npublic class Permit\n{\n    public string Number { get; }\n    public Permit(string number) => Number = number;\n}",
+     explain:"The record gets Id, Date and Result properties, equality and ToString for free. The class exposes Number read-only; only the constructor can set it."},
+    {id:"cs-1-4",t:"Nullable reference types",kind:"mcq",
+     read:"With `<Nullable>enable</Nullable>` (the default in new projects), `string` means 'never null' and `string?` means 'may be null'. The compiler warns when you dereference a maybe-null value without a check. Use `?.` (null-conditional), `??` (null-coalescing) or an `if` to handle it.\n\nWarnings are not errors: the code still compiles and can still throw at runtime.",
+     q:"With nullable reference types enabled, what happens with `string? owner = null; Console.WriteLine(owner.Length);`?",
+     options:["It does not compile","It compiles with a warning (CS8602) and throws NullReferenceException at runtime","It prints 0","It prints an empty line"],answer:1,
+     explain:"Nullable annotations produce warnings, not errors. `owner.Length` dereferences null at runtime. Write `owner?.Length ?? 0` or check first."},
+    {id:"cs-1-5",t:"Switch expressions and pattern matching",kind:"predict",
+     read:"A switch expression returns a value and matches patterns: type patterns (`int n`), guards (`when n < 0`), constants, `null`, and `_` for everything else. Arms are tested top to bottom, so order matters.",
+     code:"string Describe(object o) => o switch\n{\n    int n when n < 0 => \"negative\",\n    int n => $\"int {n}\",\n    string s => $\"text {s.Length}\",\n    null => \"null\",\n    _ => \"other\"\n};\n\nConsole.WriteLine(Describe(-2));\nConsole.WriteLine(Describe(7));\nConsole.WriteLine(Describe(\"hey\"));\nConsole.WriteLine(Describe(2.5));",
+     expect:"negative\nint 7\ntext 3\nother",
+     explain:"-2 matches the guarded arm first. 7 fails the guard and matches `int n`. \"hey\" is a string of length 3. 2.5 is a double, so it falls to `_`."}
+   ]},
+   {id:"oop",t:"Object orientation",lessons:[
+    {id:"cs-2-1",t:"virtual, override and new",kind:"predict",
+     read:"`virtual` lets a derived class `override` a method; the call is resolved at runtime by the object's actual type (polymorphism). `new` hides a base method instead: which one runs depends on the compile-time type of the reference.\n\nThis distinction is a classic interview question.",
+     code:"class Base\n{\n    public virtual string A() => \"Base.A\";\n    public string B() => \"Base.B\";\n}\nclass Derived : Base\n{\n    public override string A() => \"Derived.A\";\n    public new string B() => \"Derived.B\";\n}\n\nBase x = new Derived();\nDerived y = new Derived();\nConsole.WriteLine(x.A());\nConsole.WriteLine(x.B());\nConsole.WriteLine(y.B());",
+     expect:"Derived.A\nBase.B\nDerived.B",
+     explain:"`x.A()` is virtual, so the Derived override runs. `x.B()` is resolved by the reference type Base, so Base.B runs even though the object is Derived. `y.B()` uses the Derived reference, so the hiding method runs."},
+    {id:"cs-2-2",t:"Interfaces and dependency injection",kind:"write",
+     read:"An interface declares a contract with no implementation. Classes depend on the interface, and the concrete class is supplied from outside (constructor injection). ASP.NET Core's container does this when you register `services.AddScoped<INotifier, EmailNotifier>()`.\n\nStore the injected dependency in a `private readonly` field.",
+     task:"Declare `INotifier` with `Task SendAsync(string to, string message)`. Declare `EmailNotifier` implementing it (any body). Declare `PermitService` that receives an `INotifier` through its constructor and keeps it in a private readonly field.",
+     starter:"public interface INotifier\n{\n    // ...\n}\n\npublic class EmailNotifier // ...\n{\n}\n\npublic class PermitService\n{\n}\n",
+     accept:[/interface\s+INotifier\s*\{[^}]*Task\s+SendAsync\s*\(\s*string\s+to\s*,\s*string\s+message\s*\)\s*;/s,/class\s+EmailNotifier\s*:\s*INotifier/,/class\s+PermitService\b/,/private\s+readonly\s+INotifier\s+\w+\s*;/,/PermitService\s*\(\s*INotifier\s+\w+\s*\)/],
+     labels:["INotifier declares Task SendAsync(string to, string message)","EmailNotifier : INotifier","class PermitService","private readonly INotifier field","constructor takes INotifier"],
+     solution:"public interface INotifier\n{\n    Task SendAsync(string to, string message);\n}\n\npublic class EmailNotifier : INotifier\n{\n    public Task SendAsync(string to, string message) => Task.CompletedTask;\n}\n\npublic class PermitService\n{\n    private readonly INotifier _notifier;\n    public PermitService(INotifier notifier) => _notifier = notifier;\n}",
+     explain:"PermitService never news up an EmailNotifier, so tests can pass a fake and production can swap implementations without touching the service."},
+    {id:"cs-2-3",t:"Abstract classes versus interfaces",kind:"mcq",
+     read:"An abstract class can hold state and shared implementation and may have abstract members; a class inherits exactly one base class. An interface is a contract (and, since C# 8, may carry default implementations); a class can implement many.\n\nRule of thumb: interface for 'can do', abstract class for 'is a kind of' with shared code.",
+     q:"Which statement is true in C#?",
+     options:["A class can inherit several abstract classes","A class can inherit one base class and implement many interfaces","Interfaces can declare fields","Abstract classes cannot have constructors"],answer:1,
+     explain:"Single inheritance for classes, multiple interfaces. Interfaces cannot declare instance fields; abstract classes can have constructors (called by derived classes)."},
+    {id:"cs-2-4",t:"Replace a switch with polymorphism",kind:"write",
+     read:"A `switch` on a type code that grows with every new case is a smell. The Strategy pattern replaces it: one interface, one class per case, and a factory or dictionary that picks the implementation. New cases become new classes, not edits to existing code (Open/Closed principle).",
+     task:"Replace this fee calculation with Strategy: declare `interface IFeeRule { decimal Fee(Permit p); }` and two classes `BuildingFee` and `EventFee` that implement it (return any decimal).",
+     starter:"// Before:\n// decimal Fee(Permit p) => p.Type switch { \"Building\" => 150m, \"Event\" => 40m, _ => 0m };\n\n// After: your Strategy here\n",
+     accept:[/interface\s+IFeeRule\s*\{[^}]*decimal\s+Fee\s*\(\s*Permit\s+\w+\s*\)\s*;/s,/class\s+BuildingFee\s*:\s*IFeeRule/,/class\s+EventFee\s*:\s*IFeeRule/,/public\s+decimal\s+Fee\s*\(\s*Permit\s+\w+\s*\)/],
+     labels:["interface IFeeRule with decimal Fee(Permit p)","class BuildingFee : IFeeRule","class EventFee : IFeeRule","public decimal Fee(Permit p) implemented"],
+     solution:"public interface IFeeRule { decimal Fee(Permit p); }\n\npublic class BuildingFee : IFeeRule\n{\n    public decimal Fee(Permit p) => 150m;\n}\n\npublic class EventFee : IFeeRule\n{\n    public decimal Fee(Permit p) => 40m;\n}\n\n// Pick with DI or a dictionary: Dictionary<string, IFeeRule>",
+     explain:"Each rule is testable on its own, and adding a 'Sign' permit means adding SignFee, not editing a switch that every other type depends on."},
+    {id:"cs-2-5",t:"Generics with constraints",kind:"write",
+     read:"Generic methods work for any type `T`. A constraint (`where T : class`, `where T : IComparable<T>`, `where T : new()`) tells the compiler what you may do with `T`. `Func<T, bool>` is a delegate: a function from T to bool.",
+     task:"Write a generic method `T? FirstOrNull<T>(IEnumerable<T> items, Func<T, bool> match) where T : class` that returns the first item matching `match`, or `null` if none does. Use a `foreach` loop (don't call LINQ).",
+     starter:"public static class Finder\n{\n    // your method here\n}\n",
+     accept:[/T\??\s+FirstOrNull\s*<\s*T\s*>\s*\(\s*IEnumerable\s*<\s*T\s*>\s+\w+\s*,\s*Func\s*<\s*T\s*,\s*bool\s*>\s+\w+\s*\)/,/where\s+T\s*:\s*class/,/foreach\s*\(/,/return\s+null\s*;/],
+     labels:["signature FirstOrNull<T>(IEnumerable<T>, Func<T,bool>)","where T : class","uses foreach","returns null when nothing matches"],
+     solution:"public static class Finder\n{\n    public static T? FirstOrNull<T>(IEnumerable<T> items, Func<T, bool> match) where T : class\n    {\n        foreach (var item in items)\n            if (match(item)) return item;\n        return null;\n    }\n}",
+     explain:"`where T : class` is what allows `return null` (and `T?`) for a reference type. Without the constraint, T might be an int and null would not be valid."}
+   ]},
+   {id:"async",t:"Async and LINQ",lessons:[
+    {id:"cs-3-1",t:"async/await ordering",kind:"predict",
+     read:"An `async` method runs synchronously until the first `await` on something not yet complete. It then returns a `Task` to the caller and resumes later. `await task` waits for the result without blocking the thread.\n\nTrace the program: which lines run before `LoadAsync` returns its Task?",
+     code:"async Task<int> LoadAsync()\n{\n    Console.WriteLine(\"start\");\n    await Task.Delay(10);\n    Console.WriteLine(\"after delay\");\n    return 42;\n}\n\nConsole.WriteLine(\"before\");\nvar t = LoadAsync();\nConsole.WriteLine(\"called\");\nConsole.WriteLine(await t);",
+     expect:"before\nstart\ncalled\nafter delay\n42",
+     explain:"`LoadAsync` prints 'start' synchronously, hits `await Task.Delay`, and returns its Task. 'called' prints, then `await t` resumes LoadAsync: 'after delay', and the result 42 is printed."},
+    {id:"cs-3-2",t:"Never block on async code",kind:"mcq",
+     read:"`.Result` and `.Wait()` block the calling thread until the Task completes. In frameworks with a synchronization context (classic ASP.NET, WPF) that deadlocks; in ASP.NET Core it ties up thread-pool threads and hurts scalability. The fix is always `await`, all the way up.",
+     q:"In an ASP.NET Core controller you see `var permits = _service.GetPermitsAsync().Result;`. What should you do?",
+     options:["Leave it; ASP.NET Core has no synchronization context, so it's fine","Make the action async and `await _service.GetPermitsAsync()`","Wrap it in Task.Run to avoid blocking","Replace .Result with .GetAwaiter().GetResult()"],answer:1,
+     explain:"Blocking wastes a thread per request and can still deadlock in other contexts. `GetAwaiter().GetResult()` only changes how exceptions surface. Make the chain async."},
+    {id:"cs-3-3",t:"Deferred execution",kind:"predict",
+     read:"A LINQ query over `IEnumerable<T>` (`Where`, `Select`, `OrderBy`) is a description of work. It runs each time you enumerate it (`foreach`, `ToList`, `Count`, `string.Join`). `ToList()` takes a snapshot.\n\nTrace carefully: the list changes after the query is defined.",
+     code:"var nums = new List<int> { 1, 2, 3 };\nvar evens = nums.Where(n => n % 2 == 0);\nnums.Add(4);\nConsole.WriteLine(string.Join(\",\", evens));\nvar snapshot = nums.Where(n => n > 2).ToList();\nnums.Add(5);\nConsole.WriteLine(string.Join(\",\", snapshot));\nConsole.WriteLine(evens.Count());",
+     expect:"2,4\n3,4\n2",
+     explain:"`evens` is evaluated when joined, after 4 was added: 2,4. `snapshot` ran `ToList()` before 5 was added: 3,4. `evens.Count()` re-runs the query over {1,2,3,4,5}: two evens."},
+    {id:"cs-3-4",t:"Where, OrderBy and Select",kind:"write",
+     read:"Method syntax chains operators: `Where` filters, `OrderBy`/`OrderByDescending` sort, `Select` projects. Against Entity Framework Core the same chain becomes SQL, so keep filters in the query rather than in memory.",
+     task:"Given `IEnumerable<Permit> permits` (Permit has `Id`, `Owner`, `Status`, `DateTime Submitted`), write a query that keeps permits whose Status is \"Open\", orders them by Submitted (newest first), and projects to an anonymous object with `Id` and `Owner`.",
+     starter:"var result = permits\n    // .Where(...)\n    // .OrderByDescending(...)\n    // .Select(...)\n    ;\n",
+     accept:[/\.Where\s*\(\s*(\w+)\s*=>\s*\1\.Status\s*==\s*"Open"\s*\)/,/\.OrderByDescending\s*\(\s*(\w+)\s*=>\s*\1\.Submitted\s*\)/,/\.Select\s*\(\s*(\w+)\s*=>\s*new\s*\{\s*\1\.Id\s*,\s*\1\.Owner\s*\}\s*\)/],
+     labels:["Where(p => p.Status == \"Open\")","OrderByDescending(p => p.Submitted)","Select(p => new { p.Id, p.Owner })"],
+     solution:"var result = permits\n    .Where(p => p.Status == \"Open\")\n    .OrderByDescending(p => p.Submitted)\n    .Select(p => new { p.Id, p.Owner });",
+     explain:"Filter first, then sort, then project: the fewest rows are sorted and only the needed columns are produced."},
+    {id:"cs-3-5",t:"GroupBy into a dictionary",kind:"write",
+     read:"`GroupBy(key)` yields groups with a `Key` and the items; `ToDictionary(g => g.Key, g => g.Count())` turns them into a lookup. This is the C# twin of the TypeScript groupBy task.",
+     task:"Count permits per Status: write a query producing a `Dictionary<string, int>` from `permits` using `GroupBy` and `ToDictionary`.",
+     starter:"Dictionary<string, int> perStatus = permits\n    // ...\n    ;\n",
+     accept:[/\.GroupBy\s*\(\s*(\w+)\s*=>\s*\1\.Status\s*\)/,/\.ToDictionary\s*\(\s*(\w+)\s*=>\s*\1\.Key\s*,\s*(\w+)\s*=>\s*\2\.Count\s*\(\s*\)\s*\)/],
+     labels:["GroupBy(p => p.Status)","ToDictionary(g => g.Key, g => g.Count())"],
+     solution:"Dictionary<string, int> perStatus = permits\n    .GroupBy(p => p.Status)\n    .ToDictionary(g => g.Key, g => g.Count());",
+     explain:"Each group's Key is the status; Count() is the number of permits in it."}
+   ]},
+   {id:"aspnet",t:"ASP.NET Core essentials",lessons:[
+    {id:"cs-4-1",t:"A minimal API endpoint",kind:"write",
+     read:"Minimal APIs map routes to handlers: `app.MapGet(\"/api/permits/{id:int}\", async (int id, PermitDb db) => ...)`. Parameters bind from the route and from DI. Return `Results.Ok(x)` or `Results.NotFound()` (or the typed `TypedResults`).",
+     task:"Write a GET endpoint for `/api/permits/{id:int}` that loads the permit with `db.Permits.FindAsync(id)` and returns 200 with it, or 404 when it is null.",
+     starter:"app.MapGet(\"/api/permits/{id:int}\", async (int id, PermitDb db) =>\n{\n    // ...\n});\n",
+     accept:[/MapGet\s*\(\s*"\/api\/permits\/\{id:int\}"/,/await\s+db\.Permits\.FindAsync\s*\(\s*id\s*\)/,/Results\.NotFound\s*\(\s*\)/,/Results\.Ok\s*\(/],
+     labels:["MapGet(\"/api/permits/{id:int}\", ...)","await db.Permits.FindAsync(id)","Results.NotFound()","Results.Ok(permit)"],
+     solution:"app.MapGet(\"/api/permits/{id:int}\", async (int id, PermitDb db) =>\n{\n    var permit = await db.Permits.FindAsync(id);\n    return permit is null ? Results.NotFound() : Results.Ok(permit);\n});",
+     explain:"The `{id:int}` constraint rejects non-numeric ids with 404 before your code runs. FindAsync returns null when the key is missing."},
+    {id:"cs-4-2",t:"Dependency injection lifetimes",kind:"mcq",
+     read:"Three lifetimes: Transient (new instance every time), Scoped (one per HTTP request), Singleton (one for the app). A DbContext is not thread-safe and tracks entities, so it belongs to a request. Never capture a scoped service inside a singleton.",
+     q:"Which lifetime should an Entity Framework Core DbContext have in a web app?",options:["Singleton","Transient","Scoped (one per request)","Static field"],answer:2,
+     explain:"`AddDbContext` registers it as Scoped by default: one context per request, disposed at the end."},
+    {id:"cs-4-3",t:"Validation and problem details",kind:"mcq",
+     read:"Validation failures should return 400 with a machine-readable body. ASP.NET Core produces RFC 9457 problem details: `ValidationProblemDetails` with an `errors` dictionary. In minimal APIs, return `Results.ValidationProblem(errors)`; in controllers, `[ApiController]` does it automatically.",
+     q:"A POST /api/permits body is missing the required Owner. What should the API return?",
+     options:["200 with an error message in the body","500 Internal Server Error","400 with a problem-details body listing the Owner error","302 redirect to the form"],answer:2,
+     explain:"400 (or 422) plus problem details tells the client exactly which field failed, in a standard shape."},
+    {id:"cs-4-4",t:"EF Core query, asynchronously",kind:"write",
+     read:"Entity Framework Core translates LINQ to SQL. Use the async terminal operators (`ToListAsync`, `FirstOrDefaultAsync`, `CountAsync`) so the request thread is free while the database works. Filter and sort in the query; `AsNoTracking()` for read-only lists.",
+     task:"Write an async query over `db.Permits` that returns open permits (Status == \"Open\") ordered by Submitted ascending as a list, without change tracking.",
+     starter:"var open = // await ...\n",
+     accept:[/await\s+db\.Permits/,/\.AsNoTracking\s*\(\s*\)/,/\.Where\s*\(\s*(\w+)\s*=>\s*\1\.Status\s*==\s*"Open"\s*\)/,/\.OrderBy\s*\(\s*(\w+)\s*=>\s*\1\.Submitted\s*\)/,/\.ToListAsync\s*\(\s*\)/],
+     labels:["await db.Permits ...","AsNoTracking()","Where(p => p.Status == \"Open\")","OrderBy(p => p.Submitted)","ToListAsync()"],
+     solution:"var open = await db.Permits\n    .AsNoTracking()\n    .Where(p => p.Status == \"Open\")\n    .OrderBy(p => p.Submitted)\n    .ToListAsync();",
+     explain:"The whole chain runs as one SQL statement; ToListAsync awaits the result without blocking a thread."}
+   ]}
+  ],
+  drill:[
+   {id:"cs-d01",obj:"properties",q:"Declare a public get-only auto property Id of type int.",accept:[/public\s+int\s+Id\s*\{\s*get;\s*\}/],a:"public int Id { get; }",why:"Get-only auto properties can be set only in the constructor or an initializer."},
+   {id:"cs-d02",obj:"records",q:"Declare a positional record Permit with int Id and string Status.",accept:[/record\s+Permit\s*\(\s*int\s+Id\s*,\s*string\s+Status\s*\)\s*;?/],a:"public record Permit(int Id, string Status);",why:"Positional records give you properties, a constructor, equality and ToString."},
+   {id:"cs-d03",obj:"strings",q:"Build the string \"Hello, Ann\" from a variable name using string interpolation.",accept:[/\$"Hello,\s*\{name\}"/],a:"$\"Hello, {name}\"",why:"Interpolated strings start with $ and embed expressions in braces."},
+   {id:"cs-d04",obj:"null",q:"Return title, or \"Untitled\" when title is null (one expression).",accept:[/title\s*\?\?\s*"Untitled"/],a:"title ?? \"Untitled\"",why:"?? is the null-coalescing operator."},
+   {id:"cs-d05",obj:"async",q:"Declare an async method signature named LoadAsync that returns an int (no body needed).",accept:[/async\s+Task\s*<\s*int\s*>\s+LoadAsync\s*\(\s*\)/],a:"public async Task<int> LoadAsync()",why:"Async methods return Task or Task<T>; the T is what you return inside."},
+   {id:"cs-d06",obj:"async",q:"Call GetAsync() and store its result in x, without blocking.",accept:[/var\s+x\s*=\s*await\s+GetAsync\s*\(\s*\)\s*;?/,/\w+\s+x\s*=\s*await\s+GetAsync\s*\(\s*\)\s*;?/],a:"var x = await GetAsync();",why:"await unwraps the Task without blocking the thread."},
+   {id:"cs-d07",obj:"linq",q:"Count the permits whose Status is \"Open\" (LINQ, one call on permits).",accept:[/permits\s*\.Count\s*\(\s*(\w+)\s*=>\s*\1\.Status\s*==\s*"Open"\s*\)/],a:"permits.Count(p => p.Status == \"Open\")",why:"Count takes a predicate; no separate Where needed."},
+   {id:"cs-d08",obj:"linq",q:"Order permits by Submitted descending, then take the first 10 (LINQ chain on permits).",accept:[/permits\s*\.OrderByDescending\s*\(\s*(\w+)\s*=>\s*\1\.Submitted\s*\)\s*\.Take\s*\(\s*10\s*\)/],a:"permits.OrderByDescending(p => p.Submitted).Take(10)",why:"Sort first, then Take; against EF Core this becomes ORDER BY ... TOP/LIMIT."},
+   {id:"cs-d09",obj:"collections",q:"Look up key \"a\" in a Dictionary<string,int> named map into a variable v without throwing if it is missing (one call).",accept:[/map\s*\.TryGetValue\s*\(\s*"a"\s*,\s*out\s+(var|int)\s+v\s*\)/],a:"map.TryGetValue(\"a\", out var v)",why:"TryGetValue returns false instead of throwing KeyNotFoundException."},
+   {id:"cs-d10",obj:"patterns",q:"Write a switch expression on status that maps \"Open\" to 1, \"Closed\" to 2 and anything else to 0.",accept:[/status\s+switch\s*\{\s*"Open"\s*=>\s*1\s*,\s*"Closed"\s*=>\s*2\s*,\s*_\s*=>\s*0\s*,?\s*\}/],a:"status switch { \"Open\" => 1, \"Closed\" => 2, _ => 0 }",why:"Switch expressions return a value; _ is the discard pattern."},
+   {id:"cs-d11",obj:"exceptions",q:"Catch only an HttpRequestException into a variable ex (write the catch clause).",accept:[/catch\s*\(\s*HttpRequestException\s+ex\s*\)/],a:"catch (HttpRequestException ex)",why:"Catch the most specific exception you can handle; never swallow with an empty catch."},
+   {id:"cs-d12",obj:"oop",q:"Declare a class EmailNotifier that implements the interface INotifier (header only).",accept:[/class\s+EmailNotifier\s*:\s*INotifier/],a:"public class EmailNotifier : INotifier",why:"The colon lists the base class first (if any) and then interfaces."},
+   {id:"cs-d13",obj:"oop",q:"Override a virtual method string Describe() so it returns \"Permit\" (one line, expression-bodied).",accept:[/public\s+override\s+string\s+Describe\s*\(\s*\)\s*=>\s*"Permit"\s*;?/],a:"public override string Describe() => \"Permit\";",why:"override replaces a virtual member polymorphically; new would only hide it."},
+   {id:"cs-d14",obj:"aspnet",q:"Register PermitService for the interface IPermitService with a per-request lifetime (builder.Services...).",accept:[/builder\.Services\.AddScoped\s*<\s*IPermitService\s*,\s*PermitService\s*>\s*\(\s*\)\s*;?/],a:"builder.Services.AddScoped<IPermitService, PermitService>();",why:"Scoped = one instance per HTTP request."},
+   {id:"cs-d15",obj:"collections",q:"Loop over every item in permits with foreach, naming the variable p (header only).",accept:[/foreach\s*\(\s*(var|Permit)\s+p\s+in\s+permits\s*\)/],a:"foreach (var p in permits)",why:"foreach works on anything that implements IEnumerable."}
+  ]},
+ {id:"ts",name:"TypeScript",ksa:["K2","P2"],run:true,
+  blurb:"The front-end language. These lessons run for real in your browser: TypeScript is compiled with the official compiler and your code runs in a Web Worker. Lessons either compare your program's output with the expected output or run small unit tests.",
+  chapters:[
+   {id:"types",t:"Types and narrowing",lessons:[
+    {id:"ts-1-1",t:"Annotations, inference and template strings",kind:"run",
+     read:"TypeScript adds static types to JavaScript. You can annotate (`let label: string`) or let the compiler infer from the initializer (`let count = 3` is a number). Types exist only at compile time; at runtime it is JavaScript.\n\nRun the program, then add one line that prints the label in upper case.",
+     task:"Make the program print exactly:\n\npermits: 6\nnumber\nPERMITS",
+     starter:"let count = 3;\nlet label: string = \"permits\";\nconst total = count * 2;\nconsole.log(`${label}: ${total}`);\nconsole.log(typeof total);\n// add a line here\n",
+     expect:"permits: 6\nnumber\nPERMITS",
+     solution:"let count = 3;\nlet label: string = \"permits\";\nconst total = count * 2;\nconsole.log(`${label}: ${total}`);\nconsole.log(typeof total);\nconsole.log(label.toUpperCase());",
+     explain:"`total` is inferred as number. `typeof` at runtime prints the JavaScript type. Template strings use backticks and ${}."},
+    {id:"ts-1-2",t:"Union and literal types",kind:"tests",
+     read:"A union type lists the allowed types: `string | number`. Literal types narrow a string to specific values: `type Status = \"Open\" | \"Approved\" | \"Closed\"`. Together they replace enums for most cases and the compiler checks every use.",
+     task:"Define `type Status = \"Open\" | \"Approved\" | \"Closed\"` and implement `isFinal(s: Status): boolean` that returns true for Approved and Closed.",
+     starter:"// type Status = ...\n\nfunction isFinal(s: Status): boolean {\n  // TODO\n  return false;\n}\n",
+     tests:[["Closed is final","isFinal('Closed')===true"],["Approved is final","isFinal('Approved')===true"],["Open is not final","isFinal('Open')===false"]],
+     solution:"type Status = \"Open\" | \"Approved\" | \"Closed\";\n\nfunction isFinal(s: Status): boolean {\n  return s === \"Approved\" || s === \"Closed\";\n}",
+     explain:"With a literal union, `s === \"Aproved\"` (typo) is a compile error, which an enum-free string would not catch."},
+    {id:"ts-1-3",t:"Narrowing with typeof and null checks",kind:"run",
+     read:"Inside an `if (typeof x === \"string\")` block, TypeScript knows `x` is a string. This is narrowing. The same works with `=== null`, `in`, `instanceof` and discriminated unions. Narrowing is how you work safely with union types.",
+     task:"Complete `describe` so the program prints:\n\ntext:3\nnumber:7\nnothing",
+     starter:"function describe(x: string | number | null): string {\n  if (x === null) return \"nothing\";\n  // narrow the rest: strings print text:<length>, numbers print number:<value>\n  return \"\";\n}\n\nconsole.log(describe(\"hey\"));\nconsole.log(describe(7));\nconsole.log(describe(null));\n",
+     expect:"text:3\nnumber:7\nnothing",
+     solution:"function describe(x: string | number | null): string {\n  if (x === null) return \"nothing\";\n  if (typeof x === \"string\") return `text:${x.length}`;\n  return `number:${x}`;\n}\n\nconsole.log(describe(\"hey\"));\nconsole.log(describe(7));\nconsole.log(describe(null));",
+     explain:"After the null check and the typeof check, the remaining type is number, so no further check is needed."},
+    {id:"ts-1-4",t:"interface versus type alias",kind:"mcq",
+     read:"`interface` and `type` both describe object shapes. Interfaces can be extended and merged (declaration merging); type aliases can name unions, tuples and mapped types. Teams usually pick one for object shapes and use `type` for unions.",
+     q:"Which can only be done with a type alias, not an interface?",options:["Describe an object with optional properties","Extend another shape","Name a union such as string | number","Be implemented by a class"],answer:2,
+     explain:"Unions, tuples and conditional/mapped types need `type`. Both can describe objects, be extended and be implemented."},
+    {id:"ts-1-5",t:"Optional and readonly properties",kind:"tests",
+     read:"`?` marks a property optional; `readonly` forbids assignment after creation; `Readonly<T>` makes every property readonly. Prefer returning new objects over mutating inputs: spread `{...p, status}` copies and overrides.",
+     task:"Define `interface Permit { id: number; owner: string; status: string; notes?: string }` and implement `withStatus(p: Readonly<Permit>, status: string): Permit` that returns a new permit with the new status and does not change `p`.",
+     starter:"// interface Permit ...\n\nfunction withStatus(p: Readonly<Permit>, status: string): Permit {\n  // TODO\n  return p as Permit;\n}\n",
+     tests:[["Returns the new status","withStatus({id:1,owner:'Ann',status:'Open'},'Closed').status==='Closed'"],["Keeps other fields","withStatus({id:1,owner:'Ann',status:'Open'},'Closed').owner==='Ann'"],["Does not mutate the input","(()=>{const p={id:1,owner:'Ann',status:'Open'};withStatus(p,'Closed');return p.status==='Open'})()"],["Returns a different object","(()=>{const p={id:1,owner:'Ann',status:'Open'};return withStatus(p,'Closed')!==p})()"]],
+     solution:"interface Permit { id: number; owner: string; status: string; notes?: string }\n\nfunction withStatus(p: Readonly<Permit>, status: string): Permit {\n  return { ...p, status };\n}",
+     explain:"Spreading copies the properties into a new object; the override comes last. The input stays untouched, which Readonly<Permit> also enforces at compile time."}
+   ]},
+   {id:"functions",t:"Functions and generics",lessons:[
+    {id:"ts-2-1",t:"Arrow functions and default parameters",kind:"run",
+     read:"Arrow functions are short and keep the surrounding `this`. Parameters can have defaults (`pageSize = 25`). Rest parameters gather the remaining arguments into an array.",
+     task:"Make `page` return `${page}/${pageSize}` so the program prints:\n\n2/25\n3/10\n6",
+     starter:"const page = (page: number, pageSize = 25): string => {\n  return \"\"; // TODO\n};\nconst sum = (...nums: number[]) => nums.reduce((a, b) => a + b, 0);\n\nconsole.log(page(2));\nconsole.log(page(3, 10));\nconsole.log(sum(1, 2, 3));\n",
+     expect:"2/25\n3/10\n6",
+     solution:"const page = (page: number, pageSize = 25): string => {\n  return `${page}/${pageSize}`;\n};\nconst sum = (...nums: number[]) => nums.reduce((a, b) => a + b, 0);\n\nconsole.log(page(2));\nconsole.log(page(3, 10));\nconsole.log(sum(1, 2, 3));",
+     explain:"The default applies when the argument is omitted or undefined. `...nums` collects 1, 2, 3 into an array."},
+    {id:"ts-2-2",t:"Generic functions",kind:"tests",
+     read:"A generic function keeps the relationship between input and output types: `firstOrNull<T>(items: T[]): T | null` returns the element type, not `any`. The type parameter is inferred at the call site.",
+     task:"Implement `firstOrNull<T>(items: T[]): T | null` returning the first element or null for an empty array.",
+     starter:"function firstOrNull<T>(items: T[]): T | null {\n  // TODO\n  return null;\n}\n",
+     tests:[["First of numbers","firstOrNull([3,4])===3"],["First of strings","firstOrNull(['a','b'])==='a'"],["Empty gives null","firstOrNull([])===null"]],
+     solution:"function firstOrNull<T>(items: T[]): T | null {\n  return items.length ? items[0] : null;\n}",
+     explain:"Callers get back a number or a string, typed, without casts."},
+    {id:"ts-2-3",t:"Constraints with keyof",kind:"tests",
+     read:"`K extends keyof T` constrains a type parameter to the property names of T, and `T[K]` is the type of that property. This is how typed `pluck`/`groupBy` helpers stay safe: a misspelled key is a compile error.",
+     task:"Implement `pluck<T, K extends keyof T>(items: T[], key: K): T[K][]` that returns the value of `key` from every item.",
+     starter:"function pluck<T, K extends keyof T>(items: T[], key: K): T[K][] {\n  // TODO\n  return [];\n}\n",
+     tests:[["Plucks ids","JSON.stringify(pluck([{id:1,o:'a'},{id:2,o:'b'}],'id'))==='[1,2]'"],["Plucks strings","JSON.stringify(pluck([{id:1,o:'a'},{id:2,o:'b'}],'o'))==='[\"a\",\"b\"]'"],["Empty input","pluck([],'id').length===0"]],
+     solution:"function pluck<T, K extends keyof T>(items: T[], key: K): T[K][] {\n  return items.map(item => item[key]);\n}",
+     explain:"`items.map(i => i[key])` is all it takes; the generics give the caller a precisely typed array."},
+    {id:"ts-2-4",t:"Utility types: Partial, Pick, Record",kind:"tests",
+     read:"Built-in utility types transform shapes: `Partial<T>` makes all properties optional (patch objects), `Pick<T, K>` selects some, `Omit<T, K>` removes some, `Record<K, V>` is a typed dictionary, `Readonly<T>` freezes at compile time.",
+     task:"Define `interface Permit { id: number; owner: string; status: string }` and implement `patch(p: Permit, changes: Partial<Permit>): Permit` returning a new permit with the changes applied.",
+     starter:"// interface Permit ...\n\nfunction patch(p: Permit, changes: Partial<Permit>): Permit {\n  // TODO\n  return p;\n}\n",
+     tests:[["Applies a change","patch({id:1,owner:'Ann',status:'Open'},{status:'Closed'}).status==='Closed'"],["Keeps the rest","patch({id:1,owner:'Ann',status:'Open'},{status:'Closed'}).owner==='Ann'"],["Empty patch is a copy","(()=>{const p={id:1,owner:'Ann',status:'Open'};const q=patch(p,{});return q!==p&&q.id===1})()"]],
+     solution:"interface Permit { id: number; owner: string; status: string }\n\nfunction patch(p: Permit, changes: Partial<Permit>): Permit {\n  return { ...p, ...changes };\n}",
+     explain:"Partial<Permit> lets callers pass only the fields they change; the spread applies them over a copy."},
+    {id:"ts-2-5",t:"Discriminated unions and exhaustive checks",kind:"tests",
+     read:"A discriminated union has a common literal field (`kind`). Switching on it narrows each branch. An exhaustive check assigns the leftover to `never` so adding a new kind without handling it fails to compile.",
+     task:"Implement `area(s: Shape): number` for `type Shape = { kind: \"circle\"; r: number } | { kind: \"square\"; side: number }` (circle: Math.PI * r * r; square: side * side).",
+     starter:"type Shape = { kind: \"circle\"; r: number } | { kind: \"square\"; side: number };\n\nfunction area(s: Shape): number {\n  switch (s.kind) {\n    // TODO\n    default: {\n      const never: never = s;\n      return never;\n    }\n  }\n}\n",
+     tests:[["Square","area({kind:'square',side:3})===9"],["Circle","Math.abs(area({kind:'circle',r:1})-Math.PI)<1e-9"]],
+     solution:"type Shape = { kind: \"circle\"; r: number } | { kind: \"square\"; side: number };\n\nfunction area(s: Shape): number {\n  switch (s.kind) {\n    case \"circle\": return Math.PI * s.r * s.r;\n    case \"square\": return s.side * s.side;\n    default: {\n      const never: never = s;\n      return never;\n    }\n  }\n}",
+     explain:"In each case the compiler knows which fields exist. The `never` default is what makes the switch exhaustive."}
+   ]},
+   {id:"async",t:"Async and collections",lessons:[
+    {id:"ts-3-1",t:"Promise ordering: microtasks and timers",kind:"run",
+     read:"Synchronous code runs first. `.then` callbacks and the continuation after `await` are microtasks, which run before any `setTimeout` callback, even one with 0 ms. Knowing this order explains most 'why did this log first' puzzles.",
+     task:"Predict, then run. Reorder nothing; add a final `console.log(\"done\")` after the timeout fires (inside the timeout callback) so the program prints:\n\na\nasync start\nb\nmicro\nasync end\ntimeout\ndone",
+     starter:"console.log(\"a\");\nsetTimeout(() => { console.log(\"timeout\"); /* print done here */ }, 0);\nPromise.resolve().then(() => console.log(\"micro\"));\n(async () => { console.log(\"async start\"); await null; console.log(\"async end\"); })();\nconsole.log(\"b\");\n",
+     expect:"a\nasync start\nb\nmicro\nasync end\ntimeout\ndone",
+     solution:"console.log(\"a\");\nsetTimeout(() => { console.log(\"timeout\"); console.log(\"done\"); }, 0);\nPromise.resolve().then(() => console.log(\"micro\"));\n(async () => { console.log(\"async start\"); await null; console.log(\"async end\"); })();\nconsole.log(\"b\");",
+     explain:"The async function runs synchronously until `await null`, so 'async start' prints before 'b'. Both microtasks run before the timer; 'micro' was queued first."},
+    {id:"ts-3-2",t:"async/await with try/catch",kind:"tests",
+     read:"`await` turns a rejected promise into a thrown exception, so `try/catch` works. Caught errors are typed `unknown`; check `instanceof Error` before reading `.message`. Return a result object instead of throwing when callers need to branch.",
+     task:"Implement `async function safeParse(json: string): Promise<{ ok: true; value: unknown } | { ok: false; error: string }>` using JSON.parse in a try/catch.",
+     starter:"async function safeParse(json: string): Promise<{ ok: true; value: unknown } | { ok: false; error: string }> {\n  // TODO\n  return { ok: false, error: \"todo\" };\n}\n",
+     tests:[["Parses valid JSON","(async()=>{const r=await safeParse('{\"a\":1}');return r.ok===true&&r.value.a===1})()"],["Reports invalid JSON","(async()=>{const r=await safeParse('{bad');return r.ok===false&&typeof r.error==='string'&&r.error.length>0})()"]],
+     solution:"async function safeParse(json: string): Promise<{ ok: true; value: unknown } | { ok: false; error: string }> {\n  try {\n    return { ok: true, value: JSON.parse(json) };\n  } catch (e) {\n    return { ok: false, error: e instanceof Error ? e.message : String(e) };\n  }\n}",
+     explain:"The result type is a discriminated union on `ok`, so callers narrow with `if (r.ok)`."},
+    {id:"ts-3-3",t:"map, filter and reduce",kind:"tests",
+     read:"Array methods replace most loops: `filter` keeps items, `map` transforms, `reduce` folds to one value, `some`/`every` test, `find` locates. They return new arrays and do not mutate the input (unlike `sort` and `splice`).",
+     task:"Implement `openTotal(permits: { status: string; fee: number }[]): number` returning the sum of fees of permits whose status is \"Open\", and `owners(permits: { owner: string }[]): string[]` returning the owner names in order.",
+     starter:"function openTotal(permits: { status: string; fee: number }[]): number {\n  return 0; // TODO\n}\nfunction owners(permits: { owner: string }[]): string[] {\n  return []; // TODO\n}\n",
+     tests:[["Sums open fees","openTotal([{status:'Open',fee:10},{status:'Closed',fee:5},{status:'Open',fee:2.5}])===12.5"],["Empty sum is 0","openTotal([])===0"],["Owners in order","JSON.stringify(owners([{owner:'Ann'},{owner:'Bo'}]))==='[\"Ann\",\"Bo\"]'"]],
+     solution:"function openTotal(permits: { status: string; fee: number }[]): number {\n  return permits.filter(p => p.status === \"Open\").reduce((sum, p) => sum + p.fee, 0);\n}\nfunction owners(permits: { owner: string }[]): string[] {\n  return permits.map(p => p.owner);\n}",
+     explain:"filter then reduce with an initial value of 0 handles the empty case; map keeps order."},
+    {id:"ts-3-4",t:"Map and Set",kind:"tests",
+     read:"`Map` is a keyed collection with any key type and insertion order; `Set` holds unique values. Prefer them over plain objects for dynamic keys. `map.get(k) ?? 0` reads with a default.",
+     task:"Implement `countByStatus(permits: { status: string }[]): Map<string, number>` and `uniqueOwners(permits: { owner: string }[]): Set<string>`.",
+     starter:"function countByStatus(permits: { status: string }[]): Map<string, number> {\n  const m = new Map<string, number>();\n  // TODO\n  return m;\n}\nfunction uniqueOwners(permits: { owner: string }[]): Set<string> {\n  return new Set(); // TODO\n}\n",
+     tests:[["Counts statuses","(()=>{const m=countByStatus([{status:'Open'},{status:'Open'},{status:'Closed'}]);return m.get('Open')===2&&m.get('Closed')===1})()"],["Missing status is undefined","countByStatus([]).get('Open')===undefined"],["Unique owners","uniqueOwners([{owner:'Ann'},{owner:'Ann'},{owner:'Bo'}]).size===2"]],
+     solution:"function countByStatus(permits: { status: string }[]): Map<string, number> {\n  const m = new Map<string, number>();\n  for (const p of permits) m.set(p.status, (m.get(p.status) ?? 0) + 1);\n  return m;\n}\nfunction uniqueOwners(permits: { owner: string }[]): Set<string> {\n  return new Set(permits.map(p => p.owner));\n}",
+     explain:"`(m.get(k) ?? 0) + 1` is the idiom for counting; `new Set(array)` de-duplicates in one step."},
+    {id:"ts-3-5",t:"Classes and private members",kind:"tests",
+     read:"TypeScript classes have constructors, fields, `private`/`protected`/`public` modifiers (compile-time) and JavaScript `#private` fields (runtime). Parameter properties (`constructor(private readonly db: Db)`) declare and assign in one step, the Angular DI style.",
+     task:"Implement class `Counter` with a private count starting at 0, `increment(): void`, and a getter `value: number`.",
+     starter:"class Counter {\n  // TODO\n}\n",
+     tests:[["Starts at 0","new Counter().value===0"],["Increments","(()=>{const c=new Counter();c.increment();c.increment();return c.value===2})()"],["Count is not a public field","(()=>{const c=new Counter();return c.count===undefined||Object.keys(c).indexOf('count')===-1||true})()"]],
+     solution:"class Counter {\n  #count = 0;\n  increment(): void { this.#count++; }\n  get value(): number { return this.#count; }\n}",
+     explain:"`#count` is truly private at runtime; `private count` would only be checked by the compiler. A getter exposes a read-only view."}
+   ]}
+  ],
+  drill:[
+   {id:"ts-d01",obj:"types",q:"Declare a type alias Status allowing exactly \"Open\", \"Approved\" or \"Closed\".",accept:[/type\s+Status\s*=\s*("Open"|'Open')\s*\|\s*("Approved"|'Approved')\s*\|\s*("Closed"|'Closed')\s*;?/],a:"type Status = \"Open\" | \"Approved\" | \"Closed\";",why:"A union of string literals; order doesn't matter to the compiler, but keep it readable."},
+   {id:"ts-d02",obj:"functions",q:"Declare an arrow function double that takes a number n and returns n * 2 (typed).",accept:[/const\s+double\s*=\s*\(\s*n\s*:\s*number\s*\)(\s*:\s*number)?\s*=>\s*n\s*\*\s*2\s*;?/],a:"const double = (n: number): number => n * 2;",why:"Parameter types are required; the return type can be inferred."},
+   {id:"ts-d03",obj:"types",q:"Declare an interface Permit with a number id, a string owner and an optional string notes.",accept:[/interface\s+Permit\s*\{\s*id\s*:\s*number\s*[;,]?\s*owner\s*:\s*string\s*[;,]?\s*notes\?\s*:\s*string\s*[;,]?\s*\}/],a:"interface Permit { id: number; owner: string; notes?: string }",why:"The ? marks notes optional; readers of the type must handle undefined."},
+   {id:"ts-d04",obj:"generics",q:"Write a generic identity function id that returns its argument with the same type.",accept:[/function\s+id\s*<\s*T\s*>\s*\(\s*x\s*:\s*T\s*\)(\s*:\s*T)?\s*\{\s*return\s+x\s*;?\s*\}/,/const\s+id\s*=\s*<\s*T\s*,?\s*>\s*\(\s*x\s*:\s*T\s*\)(\s*:\s*T)?\s*=>\s*x\s*;?/],a:"function id<T>(x: T): T { return x; }",why:"T is inferred from the argument at each call."},
+   {id:"ts-d05",obj:"narrowing",q:"Write a type guard function isPermit(x: unknown) that returns x is Permit (signature only).",accept:[/function\s+isPermit\s*\(\s*x\s*:\s*unknown\s*\)\s*:\s*x\s+is\s+Permit/],a:"function isPermit(x: unknown): x is Permit",why:"The `x is Permit` return type narrows x in the caller when the function returns true."},
+   {id:"ts-d06",obj:"types",q:"Declare a variable scores typed as a dictionary from string to number (use Record).",accept:[/const\s+scores\s*:\s*Record\s*<\s*string\s*,\s*number\s*>\s*=\s*\{\s*\}\s*;?/,/let\s+scores\s*:\s*Record\s*<\s*string\s*,\s*number\s*>/],a:"const scores: Record<string, number> = {};",why:"Record<K, V> is a typed object map."},
+   {id:"ts-d07",obj:"async",q:"Fetch /api/permits and parse the JSON into data (two awaits, one line each or one line).",accept:[/const\s+\w+\s*=\s*await\s+fetch\s*\(\s*["']\/api\/permits["']\s*\)\s*;?\s*const\s+data\s*=\s*await\s+\w+\.json\s*\(\s*\)\s*;?/s,/const\s+data\s*=\s*await\s*\(\s*await\s+fetch\s*\(\s*["']\/api\/permits["']\s*\)\s*\)\s*\.json\s*\(\s*\)\s*;?/],a:"const res = await fetch(\"/api/permits\");\nconst data = await res.json();",why:"fetch resolves to a Response; .json() returns another promise."},
+   {id:"ts-d08",obj:"collections",q:"Create a Map from string to number named counts and set \"Open\" to 2.",accept:[/const\s+counts\s*=\s*new\s+Map\s*<\s*string\s*,\s*number\s*>\s*\(\s*\)\s*;?\s*counts\.set\s*\(\s*["']Open["']\s*,\s*2\s*\)\s*;?/s],a:"const counts = new Map<string, number>();\ncounts.set(\"Open\", 2);",why:"Map keeps insertion order and allows any key type."},
+   {id:"ts-d09",obj:"destructuring",q:"Destructure owner and status from permit, with status defaulting to \"Open\".",accept:[/const\s*\{\s*owner\s*,\s*status\s*=\s*["']Open["']\s*\}\s*=\s*permit\s*;?/],a:"const { owner, status = \"Open\" } = permit;",why:"Defaults in destructuring apply when the property is undefined."},
+   {id:"ts-d10",obj:"types",q:"Make the array literal [\"Open\", \"Closed\"] a readonly tuple of literal types using as const, named STATUSES.",accept:[/const\s+STATUSES\s*=\s*\[\s*["']Open["']\s*,\s*["']Closed["']\s*\]\s+as\s+const\s*;?/],a:"const STATUSES = [\"Open\", \"Closed\"] as const;",why:"as const freezes the literal types; typeof STATUSES[number] gives the union."},
+   {id:"ts-d11",obj:"generics",q:"Declare a variable changes typed as a Permit with all properties optional.",accept:[/(const|let)\s+changes\s*:\s*Partial\s*<\s*Permit\s*>/],a:"const changes: Partial<Permit> = {};",why:"Partial<T> is the type for patch objects."},
+   {id:"ts-d12",obj:"functions",q:"Declare an async function load that returns a Promise of Permit[] (signature only, no body).",accept:[/async\s+function\s+load\s*\(\s*\)\s*:\s*Promise\s*<\s*Permit\s*\[\s*\]\s*>/],a:"async function load(): Promise<Permit[]>",why:"Async functions always return a Promise; annotate the inner type."},
+   {id:"ts-d13",obj:"collections",q:"From permits, build the array of owners whose status is \"Open\" (filter then map, one expression).",accept:[/permits\s*\.filter\s*\(\s*(\w+)\s*=>\s*\1\.status\s*===?\s*["']Open["']\s*\)\s*\.map\s*\(\s*(\w+)\s*=>\s*\2\.owner\s*\)/],a:"permits.filter(p => p.status === \"Open\").map(p => p.owner)",why:"Chain filter and map; both return new arrays."},
+   {id:"ts-d14",obj:"narrowing",q:"Write the if condition that narrows x: string | number to string using typeof.",accept:[/if\s*\(\s*typeof\s+x\s*===?\s*["']string["']\s*\)/],a:"if (typeof x === \"string\")",why:"typeof narrowing works for primitives: string, number, boolean, undefined, object, function."},
+   {id:"ts-d15",obj:"classes",q:"Declare a class constructor that takes a private readonly db of type Db using a parameter property (constructor line only).",accept:[/constructor\s*\(\s*private\s+readonly\s+db\s*:\s*Db\s*\)\s*\{?\s*\}?/],a:"constructor(private readonly db: Db) {}",why:"Parameter properties declare the field and assign it; this is the Angular constructor-injection style."}
+  ]},
+ {id:"ng",name:"Angular",ksa:["K10","K2"],run:true,
+  blurb:"The posting's UI framework. Templates and component code are checked for the right constructs; the signals lessons actually run, using a small stand-in for Angular's signal, computed and effect so you can see values change. In Angular itself, effects run during change detection rather than immediately.",
+  chapters:[
+   {id:"components",t:"Components and templates",lessons:[
+    {id:"ng-1-1",t:"Anatomy of a component",kind:"mcq",
+     read:"A component is a class with a `@Component` decorator: `selector` (the tag), `template` or `templateUrl` (the HTML), `imports` (other standalone components, directives, pipes) and `changeDetection`. Since Angular 19 components are standalone by default, so no NgModule is needed.",
+     q:"Which decorator properties give a component its HTML and its tag name?",options:["html and name","template (or templateUrl) and selector","view and tag","markup and element"],answer:1,
+     explain:"`selector: 'app-permit-list'` and `template:` or `templateUrl:`. `imports` lists what the template uses."},
+    {id:"ng-1-2",t:"Control flow: @for and @if",kind:"write",
+     read:"Built-in control flow replaced *ngFor and *ngIf: `@for (p of permits(); track p.id) { ... } @empty { ... }` and `@if (cond) { ... } @else { ... }`. `track` is required and should be a stable id so Angular reuses DOM nodes.",
+     task:"Write a template that lists `permits()` in an `<ul>`: one `<li>` per permit tracked by `p.id`, showing the owner, with a `<span class=\"pill\">Open</span>` only when `p.status === 'Open'`, and an `@empty` block that shows `No permits`.",
+     starter:"<ul>\n  <!-- @for ... -->\n</ul>\n",
+     accept:[/@for\s*\(\s*p\s+of\s+permits\(\)\s*;\s*track\s+p\.id\s*\)\s*\{/,/\{\{\s*p\.owner\s*\}\}/,/@if\s*\(\s*p\.status\s*===?\s*'Open'\s*\)\s*\{\s*<span[^>]*class="pill"[^>]*>Open<\/span>\s*\}/,/@empty\s*\{[^}]*No permits[^}]*\}/],
+     labels:["@for (p of permits(); track p.id)","interpolates p.owner","@if (p.status === 'Open') { <span class=\"pill\">Open</span> }","@empty { No permits }"],
+     solution:"<ul>\n  @for (p of permits(); track p.id) {\n    <li>{{ p.owner }} @if (p.status === 'Open') { <span class=\"pill\">Open</span> }</li>\n  } @empty {\n    <li>No permits</li>\n  }\n</ul>",
+     explain:"`permits()` is called because it is a signal. `track p.id` keeps list updates cheap and preserves element state."},
+    {id:"ng-1-3",t:"Property, event and two-way binding",kind:"write",
+     read:"Interpolation `{{ }}` renders text; `[prop]=\"expr\"` binds a DOM property; `(event)=\"handler($event)\"` listens; `[(ngModel)]` (FormsModule) or `[(value)]` with a model signal binds both ways. Bind to properties, not attributes, unless you need `[attr.aria-label]`.",
+     task:"Write a template with a `<button>` that is disabled when `saving()` is true and calls `save()` on click, and an `<input>` bound two-way to `owner` with ngModel.",
+     starter:"<!-- button and input -->\n",
+     accept:[/<button[^>]*\[disabled\]\s*=\s*"saving\(\)"[^>]*>/,/<button[^>]*\(click\)\s*=\s*"save\(\)"[^>]*>/,/<input[^>]*\[\(ngModel\)\]\s*=\s*"owner"[^>]*>/],
+     labels:["[disabled]=\"saving()\"","(click)=\"save()\"","[(ngModel)]=\"owner\""],
+     solution:"<button type=\"button\" [disabled]=\"saving()\" (click)=\"save()\">Save</button>\n<input [(ngModel)]=\"owner\" aria-label=\"Owner\">",
+     explain:"Square brackets flow data in, parentheses flow events out, both together is two-way binding."},
+    {id:"ng-1-4",t:"Signal inputs and outputs",kind:"write",
+     read:"Modern components declare inputs with `input<T>()` / `input.required<T>()` and outputs with `output<T>()`. Inputs are signals (call them to read); outputs emit with `.emit(value)`. Parents bind `[permit]=\"p\"` and `(selected)=\"onSelect($event)\"`.",
+     task:"In a `PermitCard` class, declare a required input `permit` of type `Permit`, an output `selected` of type `number`, and a method `choose()` that emits the permit's id.",
+     starter:"export class PermitCard {\n  // permit = ...\n  // selected = ...\n  choose() {\n    // ...\n  }\n}\n",
+     accept:[/permit\s*=\s*input\.required\s*<\s*Permit\s*>\s*\(\s*\)\s*;?/,/selected\s*=\s*output\s*<\s*number\s*>\s*\(\s*\)\s*;?/,/this\.selected\.emit\s*\(\s*this\.permit\(\)\.id\s*\)/],
+     labels:["permit = input.required<Permit>()","selected = output<number>()","this.selected.emit(this.permit().id)"],
+     solution:"export class PermitCard {\n  permit = input.required<Permit>();\n  selected = output<number>();\n  choose() {\n    this.selected.emit(this.permit().id);\n  }\n}",
+     explain:"Reading a signal input means calling it: `this.permit()`. The output is typed, so the parent's handler receives a number."}
+   ]},
+   {id:"signals",t:"Signals and services",lessons:[
+    {id:"ng-2-1",t:"signal and computed",kind:"run",harness:"ng",
+     read:"A signal holds a value: read it by calling it (`count()`), change it with `set` or `update`. A `computed` derives a value and recalculates lazily when its dependencies change. Templates that read signals re-render only what changed, which is why signals pair with OnPush.",
+     task:"Add a `total` computed that is `fee() + 10` and print it after the update, so the output is:\n\n50\n100\n5 125\n135",
+     starter:"const count = signal(2);\nconst fee = computed(() => count() * 25);\nconsole.log(fee());\ncount.set(4);\nconsole.log(fee());\ncount.update(c => c + 1);\nconsole.log(count(), fee());\n// const total = computed(...); console.log(total());\n",
+     expect:"50\n100\n5 125\n135",
+     solution:"const count = signal(2);\nconst fee = computed(() => count() * 25);\nconsole.log(fee());\ncount.set(4);\nconsole.log(fee());\ncount.update(c => c + 1);\nconsole.log(count(), fee());\nconst total = computed(() => fee() + 10);\nconsole.log(total());",
+     explain:"Computeds chain: total depends on fee, which depends on count. Nothing recalculates until something reads it."},
+    {id:"ng-2-2",t:"effect",kind:"run",harness:"ng",
+     read:"An `effect` runs a function whenever the signals it reads change. Use it for side effects (logging, syncing to localStorage), not for deriving state (use computed). In this sandbox the effect runs immediately on each change; in Angular it is scheduled and runs during change detection.",
+     task:"Create an effect that logs `status: <value>` whenever `status` changes, then set it to \"Approved\" and \"Closed\", so the output is:\n\nstatus: Open\nstatus: Approved\nstatus: Closed",
+     starter:"const status = signal(\"Open\");\n// effect(() => ...);\n// status.set(...);\n",
+     expect:"status: Open\nstatus: Approved\nstatus: Closed",
+     solution:"const status = signal(\"Open\");\neffect(() => console.log(`status: ${status()}`));\nstatus.set(\"Approved\");\nstatus.set(\"Closed\");",
+     explain:"The effect runs once on creation (printing Open) and again after each set. Setting the same value again would not trigger it."},
+    {id:"ng-2-3",t:"Injectable services and inject()",kind:"write",
+     read:"Services are classes decorated with `@Injectable({ providedIn: 'root' })`, which makes them app-wide singletons. Components get them with `private api = inject(PermitApi)` (or a constructor parameter). Services themselves inject `HttpClient` the same way.",
+     task:"Declare a root-provided service `PermitApi` that injects `HttpClient` into a private field `http` and has a method `list()` returning `this.http.get<Permit[]>('/api/permits')`.",
+     starter:"// @Injectable(...)\nexport class PermitApi {\n  // private http = ...\n  list() {\n    // ...\n  }\n}\n",
+     accept:[/@Injectable\s*\(\s*\{\s*providedIn\s*:\s*['"]root['"]\s*\}\s*\)/,/private\s+http\s*=\s*inject\s*\(\s*HttpClient\s*\)\s*;?/,/return\s+this\.http\.get\s*<\s*Permit\s*\[\s*\]\s*>\s*\(\s*['"]\/api\/permits['"]\s*\)\s*;?/],
+     labels:["@Injectable({ providedIn: 'root' })","private http = inject(HttpClient)","list() returns this.http.get<Permit[]>('/api/permits')"],
+     solution:"@Injectable({ providedIn: 'root' })\nexport class PermitApi {\n  private http = inject(HttpClient);\n  list() {\n    return this.http.get<Permit[]>('/api/permits');\n  }\n}",
+     explain:"`providedIn: 'root'` needs no providers array. `get<Permit[]>` types the Observable the caller subscribes to."},
+    {id:"ng-2-4",t:"HttpClient and Observables",kind:"mcq",
+     read:"`HttpClient.get()` returns an Observable; nothing is sent until someone subscribes. In templates, the `async` pipe subscribes and unsubscribes for you; in code, `toSignal(obs)` turns it into a signal. Interceptors add headers or handle errors for every request.",
+     q:"When does `this.http.get('/api/permits')` actually send the request?",options:["Immediately when get() is called","When the Observable is subscribed to (async pipe, subscribe(), toSignal)","On the next change detection cycle","When the component is destroyed"],answer:1,
+     explain:"Observables are lazy. Call get() in a service, subscribe once in the consumer, and prefer the async pipe or toSignal to avoid leaks."},
+    {id:"ng-2-5",t:"Reactive forms",kind:"write",
+     read:"Reactive forms model the form in code: `FormGroup` with `FormControl`s and `Validators`, bound in the template with `[formGroup]` and `formControlName`. Validation state lives on the controls (`form.controls.owner.invalid`), which keeps templates simple and testable.",
+     task:"Declare a `form` with a `FormGroup` containing `owner` (required) and `fee` (required, min 0), and write the `<form>` opening tag bound to it with an input for owner.",
+     starter:"form = // new FormGroup({ ... })\n\n/* template:\n<form ...>\n  <input ...>\n</form>\n*/\n",
+     accept:[/new\s+FormGroup\s*\(\s*\{/,/owner\s*:\s*new\s+FormControl\s*\([^)]*Validators\.required/,/fee\s*:\s*new\s+FormControl\s*\([^)]*Validators\.min\s*\(\s*0\s*\)/,/<form[^>]*\[formGroup\]\s*=\s*"form"/,/<input[^>]*formControlName\s*=\s*"owner"/],
+     labels:["new FormGroup({ ... })","owner: new FormControl(..., Validators.required)","fee control with Validators.min(0)","<form [formGroup]=\"form\">","<input formControlName=\"owner\">"],
+     solution:"form = new FormGroup({\n  owner: new FormControl('', [Validators.required]),\n  fee: new FormControl(0, [Validators.required, Validators.min(0)]),\n});\n\n/* template:\n<form [formGroup]=\"form\" (ngSubmit)=\"save()\">\n  <label for=\"owner\">Owner</label>\n  <input id=\"owner\" formControlName=\"owner\">\n</form>\n*/",
+     explain:"Validators are functions attached to controls; the template only binds names. Import ReactiveFormsModule in the component's imports."}
+   ]},
+   {id:"routing",t:"Routing, OnPush and accessibility",lessons:[
+    {id:"ng-3-1",t:"Routes with lazy loading",kind:"write",
+     read:"Routes map paths to components: `{ path: 'permits', component: PermitList }`. Lazy routes load code on demand: `loadComponent: () => import('./permit-list').then(m => m.PermitList)`. Add `canActivate` guards for protected routes and a `**` wildcard for not-found.",
+     task:"Write a `routes` array with a lazily loaded `permits` route (component `PermitList` from `./permit-list`) and a `**` route to `NotFound`.",
+     starter:"export const routes: Routes = [\n  // ...\n];\n",
+     accept:[/path\s*:\s*['"]permits['"]/,/loadComponent\s*:\s*\(\s*\)\s*=>\s*import\s*\(\s*['"]\.\/permit-list['"]\s*\)\s*\.then\s*\(\s*(\w+)\s*=>\s*\1\.PermitList\s*\)/,/path\s*:\s*['"]\*\*['"]\s*,\s*component\s*:\s*NotFound/],
+     labels:["path: 'permits'","loadComponent: () => import('./permit-list').then(m => m.PermitList)","path: '**', component: NotFound"],
+     solution:"export const routes: Routes = [\n  { path: 'permits', loadComponent: () => import('./permit-list').then(m => m.PermitList) },\n  { path: '**', component: NotFound },\n];",
+     explain:"Lazy loading keeps the first bundle small; the wildcard must be last because routes match in order."},
+    {id:"ng-3-2",t:"OnPush change detection",kind:"mcq",
+     read:"With `changeDetection: ChangeDetectionStrategy.OnPush`, a component re-renders only when an input reference changes, an event fires inside it, or a signal or async-piped observable it uses emits. Mutating an object in place does not trigger it; replace the reference or use signals.",
+     q:"An OnPush component shows a list from an `@Input() items: Permit[]`. The parent does `this.items.push(newPermit)`. What happens?",options:["The list updates immediately","The list does not update, because the array reference did not change","Angular throws an error","The component re-renders twice"],answer:1,
+     explain:"Push mutates the same array. Assign a new array (`this.items = [...this.items, newPermit]`) or hold the list in a signal."},
+    {id:"ng-3-3",t:"An accessible template",kind:"write",
+     read:"Accessibility in templates is mostly native HTML: `<label for>` matched to an input id, real `<button>`s, headings in order, `aria-current=\"page\"` on the active nav link (`routerLinkActive` can set it with `ariaCurrentWhenActive`), and error text linked with `aria-describedby`. Manage focus after navigation.",
+     task:"Write a template with a labelled input (label `for=\"owner\"`, input `id=\"owner\"`), a submit `<button type=\"submit\">`, and a nav link with `routerLink=\"/permits\"` that sets `ariaCurrentWhenActive=\"page\"` through `routerLinkActive`.",
+     starter:"<!-- label + input, button, nav link -->\n",
+     accept:[/<label[^>]*for="owner"[^>]*>/,/<input[^>]*id="owner"[^>]*>/,/<button[^>]*type="submit"[^>]*>/,/<a[^>]*routerLink="\/permits"[^>]*>/,/routerLinkActive\s*=\s*"[^"]*"/,/ariaCurrentWhenActive\s*=\s*"page"/],
+     labels:["<label for=\"owner\">","<input id=\"owner\">","<button type=\"submit\">","<a routerLink=\"/permits\">","routerLinkActive","ariaCurrentWhenActive=\"page\""],
+     solution:"<label for=\"owner\">Owner</label>\n<input id=\"owner\" formControlName=\"owner\">\n<button type=\"submit\">Save</button>\n<nav>\n  <a routerLink=\"/permits\" routerLinkActive=\"active\" ariaCurrentWhenActive=\"page\">Permits</a>\n</nav>",
+     explain:"Native elements give names, roles and keyboard support for free; aria-current tells screen-reader users where they are."}
+   ]}
+  ],
+  drill:[
+   {id:"ng-d01",obj:"templates",q:"Write the @for opening line that loops p over permits() tracked by p.id.",accept:[/@for\s*\(\s*p\s+of\s+permits\(\)\s*;\s*track\s+p\.id\s*\)\s*\{?/],a:"@for (p of permits(); track p.id) {",why:"track is required; use a stable id."},
+   {id:"ng-d02",obj:"templates",q:"Write an @if block that shows <p>Saved</p> when saved() is true and <p>Unsaved</p> otherwise.",accept:[/@if\s*\(\s*saved\(\)\s*\)\s*\{\s*<p>Saved<\/p>\s*\}\s*@else\s*\{\s*<p>Unsaved<\/p>\s*\}/],a:"@if (saved()) { <p>Saved</p> } @else { <p>Unsaved</p> }",why:"Built-in control flow replaces *ngIf and needs no imports."},
+   {id:"ng-d03",obj:"bindings",q:"Bind a button's disabled property to busy() (attribute only).",accept:[/\[disabled\]\s*=\s*"busy\(\)"/],a:"[disabled]=\"busy()\"",why:"Square brackets bind a DOM property to an expression."},
+   {id:"ng-d04",obj:"bindings",q:"Call save() when the button is clicked (attribute only).",accept:[/\(click\)\s*=\s*"save\(\)"/],a:"(click)=\"save()\"",why:"Parentheses bind an event to a handler."},
+   {id:"ng-d05",obj:"signals",q:"Declare a signal named count starting at 0.",accept:[/(const|let)?\s*count\s*=\s*signal\s*(<\s*number\s*>)?\s*\(\s*0\s*\)\s*;?/],a:"count = signal(0);",why:"The initial value sets the signal's type."},
+   {id:"ng-d06",obj:"signals",q:"Declare a computed named double that returns count() * 2.",accept:[/(const|let)?\s*double\s*=\s*computed\s*\(\s*\(\s*\)\s*=>\s*count\(\)\s*\*\s*2\s*\)\s*;?/],a:"double = computed(() => count() * 2);",why:"Computeds are read-only and recalculate when count changes."},
+   {id:"ng-d07",obj:"signals",q:"Increase the signal count by one using update.",accept:[/count\.update\s*\(\s*(\w+)\s*=>\s*\1\s*\+\s*1\s*\)\s*;?/],a:"count.update(c => c + 1);",why:"update receives the current value and returns the next."},
+   {id:"ng-d08",obj:"di",q:"Inject HttpClient into a private field named http using inject().",accept:[/private\s+(readonly\s+)?http\s*=\s*inject\s*\(\s*HttpClient\s*\)\s*;?/],a:"private http = inject(HttpClient);",why:"inject() works in field initializers and constructors."},
+   {id:"ng-d09",obj:"inputs",q:"Declare a required signal input named permit of type Permit.",accept:[/permit\s*=\s*input\.required\s*<\s*Permit\s*>\s*\(\s*\)\s*;?/],a:"permit = input.required<Permit>();",why:"Read it with this.permit()."},
+   {id:"ng-d10",obj:"inputs",q:"Declare an output named saved that emits a number.",accept:[/saved\s*=\s*output\s*<\s*number\s*>\s*\(\s*\)\s*;?/],a:"saved = output<number>();",why:"Emit with this.saved.emit(id)."},
+   {id:"ng-d11",obj:"routing",q:"Write an anchor that navigates to /permits with routerLink (full tag, text Permits).",accept:[/<a\s+routerLink\s*=\s*"\/permits"\s*>\s*Permits\s*<\/a>/],a:"<a routerLink=\"/permits\">Permits</a>",why:"routerLink navigates without a full page load; import RouterLink."},
+   {id:"ng-d12",obj:"forms",q:"Create a FormControl named owner with an empty string initial value and the required validator.",accept:[/owner\s*=\s*new\s+FormControl\s*\(\s*''\s*,\s*(\[\s*)?Validators\.required(\s*\])?\s*\)\s*;?/,/owner\s*=\s*new\s+FormControl\s*\(\s*""\s*,\s*(\[\s*)?Validators\.required(\s*\])?\s*\)\s*;?/],a:"owner = new FormControl('', Validators.required);",why:"Validators can be one function or an array."},
+   {id:"ng-d13",obj:"templates",q:"Render permits$ (an Observable) in a template variable list with the async pipe (the @for header line, tracked by p.id).",accept:[/@for\s*\(\s*p\s+of\s+permits\$\s*\|\s*async\s*;\s*track\s+p\.id\s*\)\s*\{?/],a:"@for (p of permits$ | async; track p.id) {",why:"The async pipe subscribes and unsubscribes for you."},
+   {id:"ng-d14",obj:"components",q:"Set a component to OnPush change detection (the decorator property only).",accept:[/changeDetection\s*:\s*ChangeDetectionStrategy\.OnPush/],a:"changeDetection: ChangeDetectionStrategy.OnPush",why:"OnPush re-renders on input reference changes, events and signal changes."},
+   {id:"ng-d15",obj:"bindings",q:"Bind the aria-label attribute to the expression label() (attribute only).",accept:[/\[attr\.aria-label\]\s*=\s*"label\(\)"/],a:"[attr.aria-label]=\"label()\"",why:"aria-* are attributes, so bind with attr.."}
+  ]}
+];
+
 // ============================== TASKS ==============================
 const TASKS = [];
 function T(o){TASKS.push(o);return o;}
@@ -1283,7 +1682,7 @@ function stripTypesNaive(s){
 // ============================== STATE ==============================
 const KEY="leadSweStudy.v1";
 let canSave=true;
-function freshState(){return {v:1,start:todayStr(),ev:{},passed:{},starBest:{},cards:{},extraCards:[],mistakes:[],stories:[],days:{},best:{},newIntro:{},read:{}};}
+function freshState(){return {v:1,start:todayStr(),ev:{},passed:{},starBest:{},cards:{},extraCards:[],mistakes:[],stories:[],days:{},best:{},newIntro:{},read:{},lang:{done:{},drill:{},sm:{}}};}
 function load(){try{const s=localStorage.getItem(KEY);if(s){const o=JSON.parse(s);if(o&&o.v===1)return Object.assign(freshState(),o);}}catch(e){canSave=false;}return freshState();}
 let S=load();
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S));canSave=true;}catch(e){canSave=false;}}
@@ -1353,18 +1752,18 @@ function record(task,res,hintsUsed,opts={}){
 }
 
 // ============================== ROUTER / SHELL ==============================
-const NAV=[["today","Today","\u25CE"],["modules","Modules","\u2630"],["practice","Practice","\u270E"],["review","Review","\u21BB"],["mock","Mock Interview","\u260A"],["progress","Progress","\u25A4"]];
+const NAV=[["today","Today","\u25CE"],["modules","Modules","\u2630"],["lang","Languages","\u007B\u007D"],["practice","Practice","\u270E"],["review","Review","\u21BB"],["mock","Mock Interview","\u260A"],["progress","Progress","\u25A4"]];
 function navHTML(active){return NAV.map(([k,l,ic])=>`<a href="#/${k}" class="${active===k?"active":""}" ${active===k?'aria-current="page"':""}><span class="ic" aria-hidden="true">${ic}</span><span>${k==="mock"&&window.innerWidth<900?"Mock":l}</span></a>`).join("");}
 let mockSession=null;
 function route(){
-  const h=location.hash.replace(/^#\/?/,"")||"today";const [p,arg]=h.split("/");
+  const h=location.hash.replace(/^#\/?/,"")||"today";const [p,...restParts]=h.split("/");const arg=restParts.join("/");
   const top=NAV.find(n=>n[0]===p)?p:(p==="module"||p==="learn"?"modules":p==="task"?"practice":"today");
   $("#sidelinks").innerHTML=navHTML(top);$("#bottomlinks").innerHTML=navHTML(top);
   $("#topsub").textContent="Week "+Math.min(studyWeek(),14)+" \u00B7 "+streak()+"-day streak";
   const m=$("#main");m.innerHTML="";
   if(!canSave)m.insertAdjacentHTML("beforeend",`<div class="banner" role="alert">This browser isn't saving progress (storage blocked). Use Export on the Progress page to keep your work.</div>`);
-  if(p!=="mock")mockSession=null;
-  ({today:viewToday,modules:viewModules,module:viewModule,learn:viewLearn,practice:viewPractice,task:viewTask,review:viewReview,mock:viewMock,progress:viewProgress}[p]||viewToday)(m,arg?decodeURIComponent(arg):undefined);
+  if(p!=="mock")mockSession=null;if(p!=="lang")drill=null;
+  ({today:viewToday,modules:viewModules,module:viewModule,learn:viewLearn,lang:viewLang,practice:viewPractice,task:viewTask,review:viewReview,mock:viewMock,progress:viewProgress}[p]||viewToday)(m,arg?decodeURIComponent(arg):undefined);
   window.scrollTo(0,0);
 }
 window.addEventListener("hashchange",route);
@@ -1410,6 +1809,7 @@ function viewToday(m){
        <li style="margin-bottom:10px"><b>One practice task:</b> ${esc(task.title)} <span class="pill">${task.ksa.join(", ")}</span> ${d.task?'<span class="pill ok">Done</span>':""}<br><a class="btn" style="margin-top:6px" href="#/task/${task.id}">Open task</a></li>
        <li><b>One STAR answer:</b> \u201C${esc(st.q)}\u201D <span class="pill">${st.tags.join(", ")}</span> ${d.star?'<span class="pill ok">Done</span>':""}<br><a class="btn" style="margin-top:6px" href="#/mock/star-${st.id}">Answer it</a></li>
      </ol></div>
+   <div class="card"><div class="row"><h3 style="margin:0" class="grow">Languages</h3><a class="small" href="#/lang">All courses</a></div><div class="tasklist" style="margin-top:8px">${LANGS.map(l=>{const n=langNext(l);const p=langProgress(l);const due=drillDue(l).length;return `<a href="${n?`#/lang/${l.id}/l/${n.id}`:`#/lang/${l.id}`}"><span><b>${esc(l.name)}</b> ${n?esc(n.t):"course complete"}<br><span class="muted small">${p.done} / ${p.total} lessons${due?` \u00B7 ${due} drill card${due===1?"":"s"} due`:""}</span></span><span>${n?"Continue":"Drill"}</span></a>`;}).join("")}</div></div>
    <div class="card"><h3 style="margin-top:0">Study plan: week ${wk} of 14</h3>
      <p style="margin:4px 0"><b>Focus:</b> ${plan[1].map(id=>`<a href="#/module/${id}">${id} ${esc(ITEM[id].t)}</a>`).join("; ")}</p>
      <p style="margin:4px 0"><b>Lessons this week:</b> ${plan[1].filter(id=>LESSONS[id]).map(id=>`<a href="#/learn/${id}">${id}${S.read[id]?" \u2713":""}</a>`).join(", ")} <span class="muted small">(one per day; what it is, how it works, what to read)</span></p>
@@ -1608,6 +2008,149 @@ function renderTask(t,box,opts){
   sub.onclick=async()=>{const r=await getRes();if(r)finish(r);};
 }
 
+// ---------- languages: courses and drills ----------
+const LANG=Object.fromEntries(LANGS.map(l=>[l.id,l]));
+function langLessons(l){return l.chapters.flatMap(c=>c.lessons.map(x=>Object.assign({chapter:c},x)));}
+function langFind(id){for(const l of LANGS){for(const c of l.chapters){const x=c.lessons.find(y=>y.id===id);if(x)return {lang:l,chapter:c,lesson:x};}}return null;}
+function langProgress(l){const all=langLessons(l);const done=all.filter(x=>S.lang.done[x.id]).length;return {done,total:all.length,pct:all.length?Math.round(100*done/all.length):0};}
+function langNext(l){const all=langLessons(l);return all.find(x=>!S.lang.done[x.id])||null;}
+function drillState(id){return S.lang.sm[id];}
+function drillDue(l){const t=todayStr();return l.drill.filter(c=>drillState(c.id)&&drillState(c.id).due<=t);}
+function drillStats(l){const seen=l.drill.filter(c=>S.lang.drill[c.id]);const first=seen.filter(c=>S.lang.drill[c.id].first);const weak=l.drill.filter(c=>S.lang.drill[c.id]&&!S.lang.drill[c.id].lastOk);
+  const byObj={};l.drill.forEach(c=>{const r=S.lang.drill[c.id];if(!r)return;byObj[c.obj]=byObj[c.obj]||{n:0,ok:0};byObj[c.obj].n++;if(r.lastOk)byObj[c.obj].ok++;});
+  return {seen:seen.length,total:l.drill.length,first:first.length,weak,due:drillDue(l).length,byObj};}
+// Minimal markdown for lesson text: blank line = paragraph, "- " = list, ``` fences = code, `x` = inline code.
+function md(t){const out=[];const lines=String(t||"").split("\n");let i=0;
+  const inl=s=>esc(s).replace(/`([^`]+)`/g,"<code>$1</code>");
+  while(i<lines.length){const ln=lines[i];
+    if(ln.startsWith("```")){const buf=[];i++;while(i<lines.length&&!lines[i].startsWith("```")){buf.push(lines[i]);i++;}i++;out.push(`<pre>${esc(buf.join("\n"))}</pre>`);continue;}
+    if(ln.startsWith("- ")){const buf=[];while(i<lines.length&&lines[i].startsWith("- ")){buf.push(lines[i].slice(2));i++;}out.push(`<ul>${buf.map(b=>`<li>${inl(b)}</li>`).join("")}</ul>`);continue;}
+    if(!ln.trim()){i++;continue;}
+    const buf=[];while(i<lines.length&&lines[i].trim()&&!lines[i].startsWith("- ")&&!lines[i].startsWith("```")){buf.push(lines[i]);i++;}
+    out.push(`<p>${inl(buf.join(" "))}</p>`);}
+  return out.join("");}
+const normOut=s=>String(s||"").replace(/\r/g,"").split("\n").map(x=>x.trim().replace(/\s+/g," ")).filter((x,i,a)=>!(x===""&&(i===a.length-1))).join("\n").trim();
+function langRecord(l,lesson,score,pass){S.lang.done[lesson.id]=S.lang.done[lesson.id]||{};const prev=S.lang.done[lesson.id];prev.score=Math.max(prev.score||0,score);prev.d=todayStr();if(!pass&&!prev.passed)delete S.lang.done[lesson.id];else{prev.passed=true;l.ksa.forEach(k=>addEvidence(k,score,0.5));}markDay("task");save();}
+function drillGrade(l,card,q,first){const t=todayStr();let c=S.lang.sm[card.id];if(!c)c={ef:2.5,int:0,reps:0,due:t};
+  if(q<3){c.reps=0;c.int=1;}else{c.reps++;c.int=c.reps===1?1:c.reps===2?3:Math.round(c.int*c.ef);if(q===3)c.int=Math.max(1,Math.round(c.int*0.7));}
+  c.ef=Math.max(1.3,c.ef+(0.1-(5-q)*(0.08+(5-q)*0.02)));c.due=addDays(t,c.int);S.lang.sm[card.id]=c;
+  const r=S.lang.drill[card.id]||{n:0,ok:0,first:false};const isFirstEver=r.n===0;r.n++;if(q>=3)r.ok++;if(isFirstEver&&q>=4)r.first=true;r.lastOk=q>=3;r.last=t;S.lang.drill[card.id]=r;
+  l.ksa.forEach(k=>addEvidence(k,q>=4?100:q===3?60:0,0.25));save();}
+
+function viewLang(m,arg){
+  S.lang=S.lang||{done:{},drill:{},sm:{}};S.lang.sm=S.lang.sm||{};
+  const parts=(arg||"").split("/").filter(Boolean);
+  if(!parts.length)return langHome(m);
+  const l=LANG[parts[0]];if(!l){m.textContent="Language not found.";return;}
+  if(parts[1]==="l"&&parts[2])return langLessonView(m,l,parts[2]);
+  if(parts[1]==="drill")return langDrill(m,l,parts[2]||"ten");
+  return langTrack(m,l);
+}
+function langHome(m){
+  m.insertAdjacentHTML("beforeend",`<h2>Languages</h2><p class="muted">Short courses and typed drills for the posting's languages. Each lesson is a short read, then a task you do yourself: predict output, write code, or run TypeScript for real. Drills are quick cards: type the snippet, check, reveal, repeat on a schedule.</p>
+   ${LANGS.map(l=>{const p=langProgress(l);const n=langNext(l);const ds=drillStats(l);return `<div class="card"><div class="row"><h3 style="margin:0" class="grow">${esc(l.name)}</h3><span class="pill ${p.pct===100?"ok":""}">${p.done} / ${p.total} lessons</span><span class="pill">${ds.due?ds.due+" drill cards due":ds.seen+" / "+ds.total+" cards seen"}</span></div>
+     <p class="small muted">${esc(l.blurb)}</p><div class="bar"><span style="width:${p.pct}%"></span></div>
+     <div class="row" style="margin-top:10px">${n?`<a class="btn primary" href="#/lang/${l.id}/l/${n.id}">${p.done?"Continue":"Start"}: ${esc(n.t)}</a>`:`<span class="pill ok">Course complete</span>`}<a class="btn" href="#/lang/${l.id}">Outline</a><a class="btn" href="#/lang/${l.id}/drill/ten">Drill: 10 cards</a></div></div>`;}).join("")}`);
+}
+function langTrack(m,l){
+  const p=langProgress(l);const ds=drillStats(l);const n=langNext(l);
+  const weakObjs=Object.entries(ds.byObj).filter(([,v])=>v.ok<v.n).map(([k,v])=>`${k} (${v.ok}/${v.n})`);
+  m.insertAdjacentHTML("beforeend",`<p class="small"><a href="#/lang">← Languages</a></p><h2>${esc(l.name)}</h2>
+   <div class="card"><div class="row"><span class="grow">Lessons ${p.done} / ${p.total}</span><span class="pill">Items ${l.ksa.join(", ")}</span></div><div class="bar" style="margin-top:8px"><span style="width:${p.pct}%"></span></div>
+    <p class="small muted">${esc(l.blurb)}</p>${n?`<a class="btn primary" href="#/lang/${l.id}/l/${n.id}">${p.done?"Continue":"Start"}: ${esc(n.t)}</a>`:""}</div>
+   ${l.chapters.map((c,ci)=>`<div class="card"><h3 style="margin-top:0">${ci+1}. ${esc(c.t)}</h3><div class="tasklist">${c.lessons.map((x,xi)=>{const d=S.lang.done[x.id];return `<a href="#/lang/${l.id}/l/${x.id}"><span>${ci+1}.${xi+1} ${esc(x.t)} <span class="muted small">· ${langKind(x.kind)}</span></span><span class="pill ${d?"ok":""}">${d?d.score+"%":"New"}</span></a>`;}).join("")}</div></div>`).join("")}
+   <div class="card"><div class="row"><h3 style="margin:0" class="grow">Drill deck (${l.drill.length} cards)</h3><span class="pill">${ds.seen} seen</span><span class="pill ${ds.due?"warn":""}">${ds.due} due</span><span class="pill">${ds.seen?Math.round(100*ds.first/ds.seen):0}% first try</span></div>
+    <p class="small muted">Type the snippet from memory, check it, reveal if stuck. Cards come back on a spaced schedule; weak ones sooner.</p>
+    <div class="row"><a class="btn primary" href="#/lang/${l.id}/drill/ten">10 cards</a><a class="btn" href="#/lang/${l.id}/drill/due">Due (${ds.due})</a><a class="btn" href="#/lang/${l.id}/drill/new">New cards</a><a class="btn" href="#/lang/${l.id}/drill/weak">Weak (${ds.weak.length})</a><a class="btn" href="#/lang/${l.id}/drill/all">All ${l.drill.length}</a></div>
+    ${weakObjs.length?`<p class="small" style="margin-bottom:0"><b>Weak spots:</b> ${weakObjs.map(esc).join(", ")}</p>`:""}</div>`);
+}
+function langKind(k){return {predict:"Predict the output",write:"Write code",mcq:"Quick question",run:"Run and match output",tests:"Pass the tests"}[k]||k;}
+function langLessonView(m,l,id){
+  const f=langFind(id);if(!f||f.lang!==l){m.textContent="Lesson not found.";return;}
+  const x=f.lesson;const all=langLessons(l);const idx=all.findIndex(y=>y.id===id);const prev=all[idx-1],next=all[idx+1];const done=S.lang.done[id];
+  m.insertAdjacentHTML("beforeend",`<p class="small"><a href="#/lang/${l.id}">← ${esc(l.name)}</a> · ${esc(f.chapter.t)}</p>
+   <div class="row"><h2 class="grow" style="margin:0">${esc(x.t)}</h2><span class="pill">${langKind(x.kind)}</span><span class="pill">${idx+1} / ${all.length}</span>${done?`<span class="pill ok">Done ${done.score}%</span>`:""}</div>
+   <div class="card lesson-read" style="margin-top:12px">${md(x.read)}</div>
+   <div id="lbox"></div>
+   <div class="row" style="margin:12px 0">${prev?`<a class="btn" href="#/lang/${l.id}/l/${prev.id}">← ${esc(prev.t)}</a>`:""}<span class="grow"></span>${next?`<a class="btn ${done?"primary":""}" href="#/lang/${l.id}/l/${next.id}">${esc(next.t)} →</a>`:`<a class="btn" href="#/lang/${l.id}">Back to outline</a>`}</div>`);
+  langExercise($("#lbox"),l,x);
+}
+function langExercise(box,l,x){
+  const sub=(label)=>`<div class="row" style="margin-top:12px"><button class="primary submit">${label}</button>${x.kind==="run"?'<button class="runbtn">Run</button>':""}${x.solution?'<button class="link showsol">Show solution</button>':""}<span class="kbd grow">${["run","tests","write","predict"].includes(x.kind)?"Ctrl+Enter to check":""}</span></div><div class="out" aria-live="polite"></div>`;
+  const editor=(starter,rows,label)=>`<textarea class="code" rows="${rows}" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="${label}">${esc(starter||"")}</textarea>`;
+  let getRes;
+  if(x.kind==="predict"){
+    box.innerHTML=`<div class="card"><h3 style="margin-top:0">Your turn: what does it print?</h3><pre>${esc(x.code)}</pre><p class="small muted">Type the output exactly, one line per Console.WriteLine.</p>${editor("",Math.max(3,x.expect.split("\n").length+1),"Expected output")}${sub("Check")}</div>`;
+    getRes=()=>{const got=normOut($("textarea",box).value);if(!got){flash("Type the output first.");return null;}const want=normOut(x.expect);const gl=got.split("\n"),wl=want.split("\n");
+      const checks=wl.map((w,i)=>({l:`Line ${i+1}: ${w}`,ok:gl[i]===w,why:gl[i]===undefined?"missing":gl[i]!==w?`you wrote: ${gl[i]}`:""}));if(gl.length>wl.length)checks.push({l:`No extra lines (you added ${gl.length-wl.length})`,ok:false});
+      const ok=checks.filter(c=>c.ok).length;return {score:Math.round(100*ok/checks.length),pass:ok===checks.length,checks};};
+  } else if(x.kind==="write"){
+    box.innerHTML=`<div class="card"><h3 style="margin-top:0">Your turn</h3><p>${md(x.task).replace(/^<p>|<\/p>$/g,"")}</p>${editor(x.starter,Math.max(6,(x.starter||"").split("\n").length+4),"Code editor")}${sub("Check")}</div>`;
+    getRes=()=>{const src=$("textarea",box).value;if(!src.trim()){flash("Write some code first.");return null;}
+      const checks=x.accept.map((re,i)=>({l:x.labels&&x.labels[i]||("Pattern "+(i+1)),ok:re.test(src)}));(x.reject||[]).forEach((re,i)=>checks.push({l:(x.rejectLabels&&x.rejectLabels[i])||"Avoids a disallowed construct",ok:!re.test(src)}));
+      const ok=checks.filter(c=>c.ok).length;return {score:Math.round(100*ok/checks.length),pass:ok===checks.length,checks};};
+  } else if(x.kind==="mcq"){
+    box.innerHTML=`<div class="card"><h3 style="margin-top:0">Quick question</h3><p><b>${esc(x.q)}</b></p>${x.options.map((o,i)=>`<label class="opt"><input type="radio" name="lq-${x.id}" value="${i}"><span>${esc(o)}</span></label>`).join("")}${sub("Check")}</div>`;
+    box.addEventListener("change",()=>box.querySelectorAll(".opt").forEach(lb=>lb.classList.toggle("sel",lb.querySelector("input").checked)));
+    getRes=()=>{const c=box.querySelector("input:checked");if(!c){flash("Choose an option first.");return null;}const ok=+c.value===x.answer;return {score:ok?100:0,pass:ok,checks:[{l:ok?"Correct":"Correct answer: "+x.options[x.answer],ok}]};};
+  } else {
+    const isRun=x.kind==="run";
+    box.innerHTML=`<div class="card"><h3 style="margin-top:0">Your turn</h3><p>${md(x.task).replace(/^<p>|<\/p>$/g,"")}</p>${x.harness==="ng"?'<p class="small muted">signal, computed and effect are provided here; no imports needed.</p>':""}${editor(x.starter,Math.max(8,(x.starter||"").split("\n").length+3),"Code editor")}${isRun?`<details><summary class="small">Expected output</summary><pre>${esc(x.expect)}</pre></details>`:""}<p class="small muted">Runs in your browser: compiled with the TypeScript compiler, executed in a Web Worker.</p>${sub("Check")}</div>`;
+    const run=async(checkMode)=>{const ta=$("textarea",box);const sb=$(".submit",box);sb.disabled=true;sb.textContent="Running…";
+      const c=await compileTS(ta.value);const harness=x.harness==="ng"?NG_HARNESS:(x.harnessCode||"");
+      const flush="(async()=>{await new Promise(r=>setTimeout(r,60));return true})()";
+      const exprs=isRun?[flush]:x.tests.map(t=>t[1]);
+      const r=await runInWorker(harness+c.js,exprs,4000);sb.disabled=false;sb.textContent="Check";
+      const logs=(r.logs||[]).join("\n");
+      if(!checkMode){$(".out",box).innerHTML=`<div class="result"><b>Output</b><div class="term">${esc(logs||"(nothing printed)")}</div>${!r.ok?`<p class="small"><b>Error:</b> ${esc(r.error)}</p>`:""}${c.diags.length?`<p class="small"><b>Compiler notes:</b> ${esc(c.diags.slice(0,3).join("; "))}</p>`:""}</div>`;return null;}
+      let checks;
+      if(isRun){const got=normOut(logs),want=normOut(x.expect);const gl=got.split("\n"),wl=want.split("\n");checks=wl.map((w,i)=>({l:`Line ${i+1}: ${w}`,ok:gl[i]===w,why:gl[i]===undefined?"missing":gl[i]!==w?`got: ${gl[i]}`:""}));if(gl.length>wl.length)checks.push({l:`No extra lines (${gl.length-wl.length} extra)`,ok:false});if(!r.ok)checks.push({l:"Runs without error",ok:false,why:r.error});}
+      else{checks=!r.ok?x.tests.map(t=>({l:t[0],ok:false,why:r.error})):r.R.map(([i,ok,err])=>({l:x.tests[i][0],ok,why:err||""}));}
+      const ok=checks.filter(k=>k.ok).length;const res={score:Math.round(100*ok/checks.length),pass:ok===checks.length,checks};
+      res.extra=(logs?`<p class="small"><b>Output:</b></p><div class="term">${esc(logs.slice(0,1500))}</div>`:"")+(c.diags.length?`<p class="small"><b>Compiler notes:</b> ${esc(c.diags.slice(0,3).join("; "))}</p>`:"");return res;};
+    getRes=()=>run(true);
+    const rb=$(".runbtn",box);if(rb)rb.onclick=()=>run(false);
+  }
+  const ta=$("textarea",box);if(ta){ta.addEventListener("keydown",e=>{if(e.key==="Tab"&&!e.shiftKey){e.preventDefault();const s=ta.selectionStart;ta.setRangeText("  ",s,ta.selectionEnd,"end");}if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)){e.preventDefault();$(".submit",box).click();}});}
+  const ss=$(".showsol",box);if(ss)ss.onclick=()=>{$(".out",box).insertAdjacentHTML("beforeend",`<details open style="margin-top:10px"><summary>Solution</summary><pre>${esc(x.solution)}</pre>${x.explain?`<p class="small">${esc(x.explain)}</p>`:""}</details>`);ss.disabled=true;};
+  $(".submit",box).onclick=async()=>{const r=await getRes();if(!r)return;langRecord(l,x,r.score,r.pass);
+    $(".out",box).innerHTML=`<div class="result ${r.pass?"ok":"bad"}"><b>${r.pass?"Passed":"Not yet"}</b> · ${r.score}%${r.checks&&r.checks.length?`<ul class="checks">${r.checks.map(c=>`<li class="${c.ok?"ok":"bad"}">${esc(c.l)}${c.why?` <span class="muted small">(${esc(c.why)})</span>`:""}</li>`).join("")}</ul>`:""}${r.extra||""}${x.explain?`<p style="margin-bottom:0"><b>Why:</b> ${esc(x.explain)}</p>`:""}</div>${r.pass?`<div class="row" style="margin-top:10px"><span class="muted small">Recorded for ${l.ksa.join(", ")}. Use the arrow below to continue.</span></div>`:""}`;
+    $(".out",box).scrollIntoView({behavior:"smooth",block:"nearest"});if(r.pass){const pills=document.querySelectorAll("h2 ~ .pill, .row .pill");/* refresh header pill */route();setTimeout(()=>{const o=$(".out");if(o)o.innerHTML=`<div class="result ok"><b>Passed</b> · ${r.score}%${x.explain?`<p style="margin-bottom:0"><b>Why:</b> ${esc(x.explain)}</p>`:""}</div>`;},0);}};
+}
+// ---------- drill (typed-answer cards) ----------
+let drill=null;
+function drillPick(l,kind){const t=todayStr();const all=l.drill;const due=all.filter(c=>drillState(c.id)&&drillState(c.id).due<=t);const fresh=all.filter(c=>!drillState(c.id));
+  if(kind==="due")return due;if(kind==="new")return fresh.slice(0,10);if(kind==="weak")return drillStats(l).weak;if(kind==="all")return shuffle(all);
+  const pick=due.slice(0,10);for(const c of fresh){if(pick.length>=10)break;pick.push(c);}for(const c of shuffle(all)){if(pick.length>=10)break;if(!pick.includes(c))pick.push(c);}return pick;}
+function langDrill(m,l,kind){
+  if(!drill||drill.lang!==l.id||drill.kind!==kind){const cards=drillPick(l,kind);drill={lang:l.id,kind,cards,i:0,tries:0,results:[],revealed:false};}
+  const d=drill;
+  if(!d.cards.length){m.insertAdjacentHTML("beforeend",`<p class="small"><a href="#/lang/${l.id}">← ${esc(l.name)}</a></p><h2>${esc(l.name)} drill</h2><div class="card"><p>No cards in this set right now${kind==="due"?" (nothing due)":kind==="weak"?" (no weak cards)":""}.</p><a class="btn primary" href="#/lang/${l.id}/drill/ten">Do 10 mixed cards</a></div>`);drill=null;return;}
+  if(d.i>=d.cards.length){const ok=d.results.filter(r=>r.q>=3).length,first=d.results.filter(r=>r.q>=4).length;const weak=d.results.filter(r=>r.q<3);
+    m.insertAdjacentHTML("beforeend",`<h2>${esc(l.name)} drill: summary</h2><div class="card"><div class="row"><span class="stat"><span class="muted small">Passed</span><b>${ok} / ${d.results.length}</b></span><span class="stat"><span class="muted small">First try</span><b>${first}</b></span><span class="stat"><span class="muted small">Due again soon</span><b>${weak.length}</b></span></div>
+     ${weak.length?`<p><b>Review these:</b></p><ul>${weak.map(r=>`<li>${esc(r.card.q)}<br><code>${esc(r.card.a)}</code></li>`).join("")}</ul>`:'<p class="muted">Clean round.</p>'}
+     <div class="row"><button class="primary" id="again">Another ${kind==="all"?"full":"10"} round</button><a class="btn" href="#/lang/${l.id}">Back to ${esc(l.name)}</a><a class="btn" href="#/lang">Languages</a></div></div>`);
+    $("#again").onclick=()=>{drill=null;route();};return;}
+  const c=d.cards[d.i];
+  m.insertAdjacentHTML("beforeend",`<div class="row"><h2 class="grow" style="margin:0">${esc(l.name)} drill</h2><span class="pill">Card ${d.i+1} of ${d.cards.length}</span><span class="pill">${esc(c.obj)}</span><button class="link" id="quit">Quit</button></div>
+   <div class="card" style="margin-top:12px"><p class="flipq">${esc(c.q)}</p><textarea class="code" rows="3" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Your answer" placeholder="Type it from memory"></textarea>
+    <div class="row" style="margin-top:10px"><button class="primary" id="chk">Check</button><button id="rev">Reveal</button><button class="link" id="skip">Skip</button><span class="kbd grow">Ctrl+Enter to check · Esc to reveal</span></div><div class="out" aria-live="polite"></div></div>`);
+  const ta=$("textarea",m),out=$(".out",m);ta.focus();
+  const norm=s=>s.replace(/\s+/g," ").trim();
+  const finish=(q,msg)=>{drillGrade(l,c,q,d.tries===0);d.results.push({card:c,q});
+    out.innerHTML=`<div class="result ${q>=3?"ok":"bad"}"><b>${msg}</b><pre style="margin:8px 0">${esc(c.a)}</pre>${c.why?`<p class="small" style="margin:0">${esc(c.why)}</p>`:""}</div><div class="row" style="margin-top:10px"><button class="primary" id="next">Next</button></div>`;
+    $("#next",m).onclick=()=>{d.i++;d.tries=0;d.revealed=false;route();};$("#next",m).focus();
+    ["#chk","#rev","#skip"].forEach(s=>{const b=$(s,m);if(b)b.disabled=true;});ta.disabled=true;};
+  const check=()=>{if(d.revealed)return;const v=ta.value;if(!v.trim()){flash("Type your answer first.");return;}const ok=c.accept.some(re=>re.test(norm(v))||re.test(v));
+    if(ok){finish(d.tries===0?5:3,d.tries===0?"Correct, first try.":"Correct.");}
+    else{d.tries++;if(d.tries>=2){finish(1,"Not quite. The answer:");}else{out.innerHTML=`<div class="result bad"><b>Not quite.</b> One more try, or reveal.</div>`;}}};
+  $("#chk",m).onclick=check;
+  $("#rev",m).onclick=()=>{if(d.revealed)return;d.revealed=true;finish(1,"Revealed:");};
+  $("#skip",m).onclick=()=>{d.results.push({card:c,q:0,skipped:true});d.i++;d.tries=0;d.revealed=false;route();};
+  $("#quit",m).onclick=()=>{drill=null;location.hash="#/lang/"+l.id;};
+  ta.addEventListener("keydown",e=>{if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)){e.preventDefault();check();}if(e.key==="Escape"){e.preventDefault();$("#rev",m).click();}if(e.key==="Tab"&&!e.shiftKey){e.preventDefault();const s=ta.selectionStart;ta.setRangeText("  ",s,ta.selectionEnd,"end");}});
+}
+
 // ---------- review ----------
 function viewReview(m,filter){
   const queue=shuffle(dueCards(filter),seededRand(todayStr()+(filter||"")));
@@ -1692,6 +2235,7 @@ function viewProgress(m){
    <div class="card"><h3 style="margin-top:0">Story bank (${S.stories.length})</h3>${S.stories.length?S.stories.slice(0,30).map(s=>`<details style="border-bottom:1px solid var(--line);padding:8px 0"><summary>${esc(s.q)} <span class="pill">${s.tags.join(", ")}</span> <span class="pill ${s.score>=3?"ok":""}">${s.score}/5</span></summary>${s.kind==="situational"?`<p><b>Approach:</b> ${esc(s.S)}<br><b>Measure:</b> ${esc(s.R)}</p>`:`<p><b>S:</b> ${esc(s.S)}<br><b>T:</b> ${esc(s.T)}<br><b>A:</b> ${esc(s.A)}<br><b>R:</b> ${esc(s.R)}</p>`}<button class="link small" data-del="${s.id}">Delete</button></details>`).join(""):'<p class="muted">Answer STAR prompts to build your story bank.</p>'}</div>
    <div class="card"><h3 style="margin-top:0">14-week study plan</h3><div class="tablewrap"><table><tr><th>Week</th><th>Focus</th><th>Read</th><th>Milestone</th></tr>${PLAN.map(p=>`<tr style="${p[0]===Math.min(studyWeek(),14)?"background:var(--bg)":""}"><td>${p[0]}</td><td>${p[1].map(id=>`<a href="#/module/${id}">${id}</a>`).join(", ")}</td><td>${esc(p[2])}</td><td>${esc(p[4])}</td></tr>`).join("")}</table></div>
    <label style="margin-top:10px;max-width:240px">Plan start date<input type="date" id="sd" value="${esc(S.start)}"></label></div>
+   <div class="card"><h3 style="margin-top:0">Languages</h3><div class="tablewrap"><table><tr><th>Language</th><th>Lessons</th><th>Drill cards seen</th><th>First try</th><th>Due</th></tr>${LANGS.map(l=>{const p=langProgress(l);const ds=drillStats(l);return `<tr><td><a href="#/lang/${l.id}">${esc(l.name)}</a></td><td>${p.done} / ${p.total}</td><td>${ds.seen} / ${ds.total}</td><td>${ds.seen?Math.round(100*ds.first/ds.seen)+"%":"\u2013"}</td><td>${ds.due}</td></tr>`;}).join("")}</table></div><p class="small muted" style="margin-bottom:0">Lessons and drills add light evidence to the language items (${[...new Set(LANGS.flatMap(l=>l.ksa))].join(", ")}); mastery still needs graded tasks and interview answers.</p></div>
    <div class="card"><h3 style="margin-top:0">Your data</h3><p class="small muted">Progress is saved in this browser only. Export a file to back it up or move it to another device.</p>
    <div class="row"><button id="ex">Export progress</button><label class="btn" for="imf">Import progress</label><input type="file" id="imf" accept="application/json,.json" class="sr"><button id="rs">Reset everything</button></div></div>`);
   const drawML=()=>{const f=$("#mf")?$("#mf").value:"";const l=S.mistakes.filter(x=>{const t=TASKS.find(y=>y.id===x.task);return !f||(t&&t.ksa.includes(f));}).slice(0,40);
@@ -1763,6 +2307,10 @@ function registerSW(){
 // ---------- self-check (dev) ----------
 function selfCheck(){const missing=ITEMS.filter(i=>!TASKS.some(t=>t.ksa.includes(i.id))||CARDS.filter(c=>c.item===i.id).length<2||!STAR.some(s=>s.tags.includes(i.id))).map(i=>i.id);if(missing.length)console.warn("Coverage gaps:",missing);else console.log("Coverage OK: all",ITEMS.length,"items have tasks, 2+ cards and a STAR prompt. Tasks:",TASKS.length,"Cards:",CARDS.length);
   const thin=compItemIds().filter(id=>CARDS.filter(c=>c.item===id).length<3||STAR.filter(s=>s.tags.includes(id)).length<2||!TASKS.some(t=>t.ksa.includes(id)&&t.type!=="write"));if(thin.length)console.warn("Competency behaviors needing 3 cards, 2 prompts and a graded task:",thin);
+  const lids=LANGS.flatMap(l=>langLessons(l).map(x=>x.id)).concat(LANGS.flatMap(l=>l.drill.map(c=>c.id)));const ldup=lids.filter((x,i)=>lids.indexOf(x)!==i);if(ldup.length)console.warn("Duplicate language ids:",ldup);
+  const badDrill=LANGS.flatMap(l=>l.drill.filter(c=>!c.accept.some(re=>re.test(c.a))).map(c=>c.id));if(badDrill.length)console.warn("Drill cards whose model answer fails its own pattern:",badDrill);
+  const badWrite=LANGS.flatMap(l=>langLessons(l).filter(x=>x.kind==="write"&&!x.accept.every(re=>re.test(x.solution))).map(x=>x.id));if(badWrite.length)console.warn("Write lessons whose solution fails its own pattern:",badWrite);
+  console.log("Languages:",LANGS.map(l=>l.name+" "+langLessons(l).length+" lessons, "+l.drill.length+" cards").join("; "));
   const noLesson=ITEMS.filter(i=>!LESSONS[i.id]).map(i=>i.id);if(noLesson.length)console.warn("Items without a lesson:",noLesson);
   const dupIds=a=>a.map(x=>x.id).filter((x,i,arr)=>arr.indexOf(x)!==i);const d=[...dupIds(ITEMS),...dupIds(TASKS),...dupIds(STAR),...dupIds(CARDS)];if(d.length)console.warn("Duplicate ids:",d);}
 selfCheck();

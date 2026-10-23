@@ -28,6 +28,7 @@ There is no build step and no dependency to install. The only network dependency
 | Today | A 20-minute session: today's lesson (one of this week's focus items), due review cards, one task from a weak item, one interview prompt, this week's plan. |
 | Lesson | Every module has a lesson: what it is, how it works (steps), key terms, exactly what to read (specific pages with a time estimate), and check-yourself questions. "Mark as read" counts toward the daily streak. |
 | Modules | One module per posting item and per supporting topic. Lesson, objectives, resources, practice, cards, prompts. |
+| Languages | Short courses for C#, TypeScript and Angular (read, then do: predict output, write code checked for the right constructs, or run TypeScript for real in a Web Worker), plus typed drill decks: type the snippet from memory, check, reveal, with spaced repetition and a session summary. |
 | Practice | Every graded task, filterable by item and type. "Mixed set" picks from your five weakest items. |
 | Review | Spaced repetition (SM-2) over the review cards, plus cards generated from your mistakes. |
 | Mock Interview | Technical round (8 graded tasks, 25 minutes) and behavioral round (STAR and situational prompts with a rubric). |
@@ -46,6 +47,7 @@ Everything is in `index.html`, in the `DATA` section near the top of the script:
 | `COMPETENCIES` | Competencies from the posting (see below). Each one generates its items (`C1a`…), cards, prompts and tasks. |
 | `PUBLIC_ITEMS` | Supporting topics G1–G4 (group `Enterprise`) with `supports:[item ids]`. |
 | `LESSONS` | One lesson per item id: `{what, how:[steps], terms:[[term, meaning]], read:[[title, url, what to read]], check:[questions]}`. Competency behaviors carry theirs as `behavior.lesson`. The time estimate comes from the "N minutes" notes in `read`. |
+| `LANGS` | Language courses and drills: `{id, name, ksa, chapters:[{id, t, lessons:[...]}], drill:[{id, obj, q, accept:[regex], a, why}]}`. Lesson kinds: `predict` (code + expect), `write` (task, starter, accept patterns, labels, solution), `mcq`, `run` (TypeScript; output must match `expect`; `harness:"ng"` provides signal/computed/effect), `tests` (TypeScript unit tests `[label, expression]`). |
 | `CORE_CARDS` | Review cards: `[item id, question, answer]`. |
 | `CORE_STAR` | Interview prompts: `{id, q, tags:[item ids], kind?: "situational", always?: true}`. |
 | `PLAN` | The 14-week plan: `[week, [item ids], read, practice, milestone]`. |

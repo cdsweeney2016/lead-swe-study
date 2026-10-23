@@ -140,6 +140,79 @@ async function runTasks(page, size) {
   await domClick(page, ".submit"); r = await result(page); check(`${size} hint costs 15%`, /score 85%/.test(r.text), r.text.split("\n")[0]);
 }
 
+async function runLanguages(page, size) {
+  await page.goto(BASE + "#/lang", { waitUntil: "networkidle0" });
+  const home = await page.$eval("main", e => e.innerText);
+  check(`${size} Languages page lists C#, TypeScript and Angular`, /C#/.test(home) && /TypeScript/.test(home) && /Angular/.test(home) && /Drill: 10 cards/.test(home));
+  const info = await page.evaluate(() => ({ dups: LANGS.flatMap(l => langLessons(l).map(x => x.id)).filter((x, i, a) => a.indexOf(x) !== i), badDrill: LANGS.flatMap(l => l.drill.filter(c => !c.accept.some(re => re.test(c.a))).map(c => c.id)), badWrite: LANGS.flatMap(l => langLessons(l).filter(x => x.kind === "write" && !x.accept.every(re => re.test(x.solution))).map(x => x.id)) }));
+  check(`${size} language data is self-consistent`, !info.dups.length && !info.badDrill.length && !info.badWrite.length, JSON.stringify(info));
+  await shot(page, size, "lang-home");
+  // C# predict lesson: type the expected output
+  await page.goto(BASE + "#/lang/cs/l/cs-1-1", { waitUntil: "networkidle0" });
+  const expect1 = await page.evaluate(() => langFind("cs-1-1").lesson.expect);
+  await setText(page, "#lbox textarea", expect1); await domClick(page, "#lbox .submit"); await sleep(200);
+  let txt = await page.$eval("main", e => e.innerText);
+  check(`${size} C# predict lesson passes with the right output`, /Done 100%/.test(txt) || /Passed/.test(txt));
+  await shot(page, size, "lang-cs-predict");
+  // C# write lesson: paste the solution
+  await page.goto(BASE + "#/lang/cs/l/cs-1-3", { waitUntil: "networkidle0" });
+  const sol = await page.evaluate(() => langFind("cs-1-3").lesson.solution);
+  await setText(page, "#lbox textarea", sol); await domClick(page, "#lbox .submit"); await sleep(200);
+  txt = await page.$eval("main", e => e.innerText); check(`${size} C# write lesson passes with the solution`, /Done 100%/.test(txt) || /Passed/.test(txt));
+  // C# mcq
+  await page.goto(BASE + "#/lang/cs/l/cs-1-4", { waitUntil: "networkidle0" });
+  const ans = await page.evaluate(() => langFind("cs-1-4").lesson.answer);
+  await tick(page, `input[name="lq-cs-1-4"][value="${ans}"]`); await domClick(page, "#lbox .submit"); await sleep(200);
+  txt = await page.$eval("main", e => e.innerText); check(`${size} language mcq passes`, /Done 100%/.test(txt) || /Passed/.test(txt));
+  // TypeScript run lesson: solution must produce the expected output
+  await page.goto(BASE + "#/lang/ts/l/ts-1-1", { waitUntil: "networkidle0" });
+  const tsol = await page.evaluate(() => langFind("ts-1-1").lesson.solution);
+  await setText(page, "#lbox textarea", tsol); await domClick(page, "#lbox .runbtn"); await page.waitForSelector("#lbox .out .term", { timeout: 30000 });
+  const runOut = await page.$eval("#lbox .out .term", e => e.innerText); check(`${size} TypeScript Run shows program output`, /permits: 6/.test(runOut));
+  await domClick(page, "#lbox .submit"); await page.waitForFunction(() => /Passed|Not yet/.test(document.querySelector("main").innerText), { timeout: 30000 });
+  txt = await page.$eval("main", e => e.innerText); check(`${size} TypeScript run lesson passes`, /Passed/.test(txt) || /Done 100%/.test(txt));
+  await shot(page, size, "lang-ts-run");
+  // TypeScript tests lesson
+  await page.goto(BASE + "#/lang/ts/l/ts-2-3", { waitUntil: "networkidle0" });
+  const tsol2 = await page.evaluate(() => langFind("ts-2-3").lesson.solution);
+  await setText(page, "#lbox textarea", tsol2); await domClick(page, "#lbox .submit"); await page.waitForFunction(() => /Passed|Not yet/.test(document.querySelector("main").innerText), { timeout: 30000 });
+  txt = await page.$eval("main", e => e.innerText); check(`${size} TypeScript tests lesson passes`, /Passed/.test(txt) || /Done 100%/.test(txt));
+  // Angular signals lesson (harness)
+  await page.goto(BASE + "#/lang/ng/l/ng-2-1", { waitUntil: "networkidle0" });
+  const nsol = await page.evaluate(() => langFind("ng-2-1").lesson.solution);
+  await setText(page, "#lbox textarea", nsol); await domClick(page, "#lbox .submit"); await page.waitForFunction(() => /Passed|Not yet/.test(document.querySelector("main").innerText), { timeout: 30000 });
+  txt = await page.$eval("main", e => e.innerText); check(`${size} Angular signals lesson runs on the harness`, /Passed/.test(txt) || /Done 100%/.test(txt), txt.match(/(Passed|Not yet)[^\n]*/)?.[0]);
+  // every run/tests solution passes its own check (data integrity, via the worker)
+  const allOk = await page.evaluate(async () => {
+    const out = [];
+    for (const l of LANGS) for (const x of langLessons(l)) {
+      if (x.kind !== "run" && x.kind !== "tests") continue;
+      const c = await compileTS(x.solution); const h = x.harness === "ng" ? NG_HARNESS : "";
+      const flush = "(async()=>{await new Promise(r=>setTimeout(r,60));return true})()";
+      const r = await runInWorker(h + c.js, x.kind === "run" ? [flush] : x.tests.map(t => t[1]), 4000);
+      const ok = r.ok && (x.kind === "run" ? normOut((r.logs || []).join("\n")) === normOut(x.expect) : r.R.every(t => t[1]));
+      if (!ok) out.push(x.id + ":" + (r.error || JSON.stringify(r.R) || (r.logs || []).join("|")));
+    }
+    return out;
+  });
+  check(`${size} every TypeScript/Angular solution passes its own lesson`, allOk.length === 0, allOk.join("; "));
+  // drill: 10-card session, answer with model answers, one reveal
+  await page.goto(BASE + "#/lang/cs/drill/ten", { waitUntil: "networkidle0" });
+  for (let i = 0; i < 10; i++) {
+    const card = await page.evaluate(() => drill && drill.cards[drill.i] ? { a: drill.cards[drill.i].a } : null);
+    if (!card) break;
+    if (i === 2) { await domClick(page, "#rev"); } else { await setText(page, "main textarea", card.a); await domClick(page, "#chk"); }
+    await page.waitForSelector("#next", { timeout: 5000 }); if (i === 1) await shot(page, size, "lang-drill-card");
+    await domClick(page, "#next"); await sleep(80);
+  }
+  const sum = await page.$eval("main", e => e.innerText);
+  check(`${size} drill session reaches a summary with 9 / 10 passed`, /drill: summary/.test(sum) && /9 \/ 10/.test(sum), sum.split("\n").slice(0, 6).join(" | "));
+  await shot(page, size, "lang-drill-summary");
+  const st = await state(page); check(`${size} drill results and SM-2 state saved`, Object.keys(st.lang.drill).length === 10 && Object.keys(st.lang.sm).length === 10 && Object.keys(st.lang.done).length >= 5);
+  await page.goto(BASE + "#/lang/cs", { waitUntil: "networkidle0" });
+  const track = await page.$eval("main", e => e.innerText); check(`${size} track page shows progress and drill stats`, /Lessons 3 \/ \d+/.test(track) && /10 seen/.test(track) && /% first try/.test(track));
+  await shot(page, size, "lang-track");
+}
 async function runLessons(page, size) {
   await page.goto(BASE + "#/today", { waitUntil: "networkidle0" });
   const today = await page.$eval("main", e => e.innerText);
@@ -331,6 +404,7 @@ try {
     check(`${size} no horizontal scroll`, overflow <= 0, `${overflow}px`);
     await shot(page, size, "today");
     await runTasks(page, size);
+    await runLanguages(page, size);
     await runLessons(page, size);
     await runReview(page, size);
     await runMock(page, size);
