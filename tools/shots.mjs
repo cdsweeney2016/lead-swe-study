@@ -10,7 +10,7 @@ const OUT = path.resolve(here, "..", "test-screenshots");
 fs.mkdirSync(OUT, { recursive: true });
 const BASE = process.argv[2] || "http://127.0.0.1:8000/";
 const PREFIX = process.argv[3] ? process.argv[3] + "-" : "";
-const ROUTES = [["today", "#/today"], ["modules", "#/modules"], ["module-C1e", "#/module/C1e"], ["practice", "#/practice"], ["task-C1e-outage", "#/task/C1e-outage"], ["review", "#/review"], ["mock", "#/mock"], ["progress", "#/progress"]];
+const ROUTES = [["today", "#/today"], ["modules", "#/modules"], ["module-C1e", "#/module/C1e"], ["learn-K9", "#/learn/K9"], ["learn-C1c", "#/learn/C1c"], ["practice", "#/practice"], ["task-C1e-outage", "#/task/C1e-outage"], ["review", "#/review"], ["mock", "#/mock"], ["progress", "#/progress"]];
 
 const { browser, close, version } = await startBrowser();
 console.log("browser:", version);

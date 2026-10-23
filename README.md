@@ -25,8 +25,9 @@ There is no build step and no dependency to install. The only network dependency
 
 | Screen | What it does |
 | --- | --- |
-| Today | A 10-minute session: due review cards, one task from a weak item, one interview prompt, this week's plan. |
-| Modules | One module per posting item and per supporting topic. Objectives, resources, practice, cards, prompts. |
+| Today | A 20-minute session: today's lesson (one of this week's focus items), due review cards, one task from a weak item, one interview prompt, this week's plan. |
+| Lesson | Every module has a lesson: what it is, how it works (steps), key terms, exactly what to read (specific pages with a time estimate), and check-yourself questions. "Mark as read" counts toward the daily streak. |
+| Modules | One module per posting item and per supporting topic. Lesson, objectives, resources, practice, cards, prompts. |
 | Practice | Every graded task, filterable by item and type. "Mixed set" picks from your five weakest items. |
 | Review | Spaced repetition (SM-2) over the review cards, plus cards generated from your mistakes. |
 | Mock Interview | Technical round (8 graded tasks, 25 minutes) and behavioral round (STAR and situational prompts with a rubric). |
@@ -44,6 +45,7 @@ Everything is in `index.html`, in the `DATA` section near the top of the script:
 | `CORE_ITEMS` | The posting items M1–M2, K1–K10, S1–S3, A1–A4, P1–P5. Shape: `{id, g, t, obj:[...], res:[R keys], sum}`. |
 | `COMPETENCIES` | Competencies from the posting (see below). Each one generates its items (`C1a`…), cards, prompts and tasks. |
 | `PUBLIC_ITEMS` | Supporting topics G1–G4 (group `Enterprise`) with `supports:[item ids]`. |
+| `LESSONS` | One lesson per item id: `{what, how:[steps], terms:[[term, meaning]], read:[[title, url, what to read]], check:[questions]}`. Competency behaviors carry theirs as `behavior.lesson`. The time estimate comes from the "N minutes" notes in `read`. |
 | `CORE_CARDS` | Review cards: `[item id, question, answer]`. |
 | `CORE_STAR` | Interview prompts: `{id, q, tags:[item ids], kind?: "situational", always?: true}`. |
 | `PLAN` | The 14-week plan: `[week, [item ids], read, practice, milestone]`. |

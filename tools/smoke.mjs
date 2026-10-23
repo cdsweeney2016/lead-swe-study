@@ -140,6 +140,25 @@ async function runTasks(page, size) {
   await domClick(page, ".submit"); r = await result(page); check(`${size} hint costs 15%`, /score 85%/.test(r.text), r.text.split("\n")[0]);
 }
 
+async function runLessons(page, size) {
+  await page.goto(BASE + "#/today", { waitUntil: "networkidle0" });
+  const today = await page.$eval("main", e => e.innerText);
+  check(`${size} Today shows a lesson step with a time estimate`, /Read today's lesson:/.test(today) && /Study it \(about \d+ min\)/.test(today) && /Lessons this week:/.test(today));
+  const n = await page.evaluate(() => ({ lessons: Object.keys(LESSONS).length, items: ITEMS.length, missing: ITEMS.filter(i => !LESSONS[i.id]).map(i => i.id) }));
+  check(`${size} every module has a lesson`, n.lessons === n.items && n.missing.length === 0, `${n.lessons}/${n.items}`);
+  await page.goto(BASE + "#/learn/K9", { waitUntil: "networkidle0" });
+  const text = await page.$eval("main", e => e.innerText);
+  check(`${size} lesson page has all sections`, ["What it is", "How it works", "Key terms", "Read these", "Check yourself"].every(h => text.includes(h)));
+  const links = await page.$$eval(".tasklist a[target=_blank]", as => as.map(a => a.href));
+  check(`${size} lesson links are absolute https URLs`, links.length >= 2 && links.every(h => /^https:\/\//.test(h)), `${links.length} links`);
+  await shot(page, size, "lesson-K9");
+  await tick(page, "input[data-c]"); await domClick(page, "#markread"); await sleep(200);
+  const st = await state(page); const d = st.days[new Date().toISOString().slice(0, 10)] || st.days[Object.keys(st.days).pop()];
+  check(`${size} mark as read records the date and the daily step`, !!st.read.K9 && d && d.read >= 1, `read=${st.read.K9}`);
+  await page.goto(BASE + "#/module/K9", { waitUntil: "networkidle0" });
+  const mod = await page.$eval("main", e => e.innerText);
+  check(`${size} module page shows Study card with read pill`, /Study\s*Read \d{4}-\d{2}-\d{2}/.test(mod) && /Open the lesson/.test(mod));
+}
 async function runReview(page, size) {
   await page.goto(BASE + "#/review", { waitUntil: "networkidle0" });
   const first = await page.$eval("#rv", e => e.innerText);
@@ -312,6 +331,7 @@ try {
     check(`${size} no horizontal scroll`, overflow <= 0, `${overflow}px`);
     await shot(page, size, "today");
     await runTasks(page, size);
+    await runLessons(page, size);
     await runReview(page, size);
     await runMock(page, size);
     await runProgress(page, size);
