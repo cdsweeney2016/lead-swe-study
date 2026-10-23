@@ -2020,6 +2020,7 @@ function drillStats(l){const seen=l.drill.filter(c=>S.lang.drill[c.id]);const fi
   const byObj={};l.drill.forEach(c=>{const r=S.lang.drill[c.id];if(!r)return;byObj[c.obj]=byObj[c.obj]||{n:0,ok:0};byObj[c.obj].n++;if(r.lastOk)byObj[c.obj].ok++;});
   return {seen:seen.length,total:l.drill.length,first:first.length,weak,due:drillDue(l).length,byObj};}
 // Minimal markdown for lesson text: blank line = paragraph, "- " = list, ``` fences = code, `x` = inline code.
+const mdi=s=>esc(s).replace(/`([^`]+)`/g,"<code>$1</code>");
 function md(t){const out=[];const lines=String(t||"").split("\n");let i=0;
   const inl=s=>esc(s).replace(/`([^`]+)`/g,"<code>$1</code>");
   while(i<lines.length){const ln=lines[i];
@@ -2112,10 +2113,10 @@ function langExercise(box,l,x){
     const rb=$(".runbtn",box);if(rb)rb.onclick=()=>run(false);
   }
   const ta=$("textarea",box);if(ta){ta.addEventListener("keydown",e=>{if(e.key==="Tab"&&!e.shiftKey){e.preventDefault();const s=ta.selectionStart;ta.setRangeText("  ",s,ta.selectionEnd,"end");}if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)){e.preventDefault();$(".submit",box).click();}});}
-  const ss=$(".showsol",box);if(ss)ss.onclick=()=>{$(".out",box).insertAdjacentHTML("beforeend",`<details open style="margin-top:10px"><summary>Solution</summary><pre>${esc(x.solution)}</pre>${x.explain?`<p class="small">${esc(x.explain)}</p>`:""}</details>`);ss.disabled=true;};
+  const ss=$(".showsol",box);if(ss)ss.onclick=()=>{$(".out",box).insertAdjacentHTML("beforeend",`<details open style="margin-top:10px"><summary>Solution</summary><pre>${esc(x.solution)}</pre>${x.explain?`<p class="small">${mdi(x.explain)}</p>`:""}</details>`);ss.disabled=true;};
   $(".submit",box).onclick=async()=>{const r=await getRes();if(!r)return;langRecord(l,x,r.score,r.pass);
-    $(".out",box).innerHTML=`<div class="result ${r.pass?"ok":"bad"}"><b>${r.pass?"Passed":"Not yet"}</b> · ${r.score}%${r.checks&&r.checks.length?`<ul class="checks">${r.checks.map(c=>`<li class="${c.ok?"ok":"bad"}">${esc(c.l)}${c.why?` <span class="muted small">(${esc(c.why)})</span>`:""}</li>`).join("")}</ul>`:""}${r.extra||""}${x.explain?`<p style="margin-bottom:0"><b>Why:</b> ${esc(x.explain)}</p>`:""}</div>${r.pass?`<div class="row" style="margin-top:10px"><span class="muted small">Recorded for ${l.ksa.join(", ")}. Use the arrow below to continue.</span></div>`:""}`;
-    $(".out",box).scrollIntoView({behavior:"smooth",block:"nearest"});if(r.pass){const pills=document.querySelectorAll("h2 ~ .pill, .row .pill");/* refresh header pill */route();setTimeout(()=>{const o=$(".out");if(o)o.innerHTML=`<div class="result ok"><b>Passed</b> · ${r.score}%${x.explain?`<p style="margin-bottom:0"><b>Why:</b> ${esc(x.explain)}</p>`:""}</div>`;},0);}};
+    $(".out",box).innerHTML=`<div class="result ${r.pass?"ok":"bad"}"><b>${r.pass?"Passed":"Not yet"}</b> · ${r.score}%${r.checks&&r.checks.length?`<ul class="checks">${r.checks.map(c=>`<li class="${c.ok?"ok":"bad"}">${esc(c.l)}${c.why?` <span class="muted small">(${esc(c.why)})</span>`:""}</li>`).join("")}</ul>`:""}${r.extra||""}${x.explain?`<p style="margin-bottom:0"><b>Why:</b> ${mdi(x.explain)}</p>`:""}</div>${r.pass?`<div class="row" style="margin-top:10px"><span class="muted small">Recorded for ${l.ksa.join(", ")}. Use the arrow below to continue.</span></div>`:""}`;
+    $(".out",box).scrollIntoView({behavior:"smooth",block:"nearest"});if(r.pass){const pills=document.querySelectorAll("h2 ~ .pill, .row .pill");/* refresh header pill */route();setTimeout(()=>{const o=$(".out");if(o)o.innerHTML=`<div class="result ok"><b>Passed</b> · ${r.score}%${x.explain?`<p style="margin-bottom:0"><b>Why:</b> ${mdi(x.explain)}</p>`:""}</div>`;},0);}};
 }
 // ---------- drill (typed-answer cards) ----------
 let drill=null;

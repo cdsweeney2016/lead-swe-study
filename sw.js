@@ -1,6 +1,6 @@
 // Lead SWE Study service worker.
 // Bump VERSION on every release so the app shell is re-cached and users see "Update ready".
-const VERSION = "2026-10-23.5";
+const VERSION = "2026-10-23.6";
 const SHELL_CACHE = "lss-shell-" + VERSION;
 const RUNTIME_CACHE = "lss-runtime";
 
