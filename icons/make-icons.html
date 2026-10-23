@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Make PNG icons</title>
+<style>body{font-family:system-ui,sans-serif;margin:24px;line-height:1.5}a{display:inline-block;margin:6px 12px 6px 0}canvas{border:1px solid #ccc;margin:4px;max-width:96px}</style>
+</head>
+<body>
+<h1>Make PNG icons for Lead SWE Study</h1>
+<p>Open this page from the same folder as <code>icon.svg</code> (for example on GitHub Pages). It draws the SVG icons onto canvases and offers PNG downloads. Save them into the <code>icons/</code> folder with the names shown.</p>
+<div id="out"></div>
+<script>
+const jobs=[["icon.svg","icon-192.png",192],["icon.svg","icon-512.png",512],["icon-maskable.svg","icon-512-maskable.png",512],["icon-maskable.svg","apple-touch-icon.png",180]];
+const out=document.getElementById("out");
+window.pngs={};
+(async()=>{
+  for(const [src,name,size] of jobs){
+    const svg=await (await fetch(src)).text();
+    const img=new Image();
+    img.src="data:image/svg+xml;base64,"+btoa(unescape(encodeURIComponent(svg)));
+    await img.decode();
+    const c=document.createElement("canvas");c.width=c.height=size;
+    c.getContext("2d").drawImage(img,0,0,size,size);
+    const url=c.toDataURL("image/png");window.pngs[name]=url.split(",")[1];
+    const a=document.createElement("a");a.href=url;a.download=name;a.textContent="Download "+name;
+    out.appendChild(c);out.appendChild(a);out.appendChild(document.createElement("br"));
+  }
+})().catch(e=>{out.textContent="Could not render icons: "+e.message+" (open this page over http/https, not as a file)";});
+</script>
+</body>
+</html>

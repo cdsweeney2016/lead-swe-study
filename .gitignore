@@ -1,0 +1,8 @@
+# Local tooling and test output (not part of the published app)
+node_modules/
+tools/node_modules/
+tools/package-lock.json
+test-screenshots/
+# Personal study notes (Obsidian-style vault). Remove this line to publish them.
+docs/
+.claude/
